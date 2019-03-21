@@ -19,8 +19,7 @@ import { LoadParams, SupportedFormats, RepresentationStyle, ModelInfo } from './
 import { RxEventHelper } from 'mol-util/rx-event-helper';
 import { ControlsWrapper } from './ui/controls';
 import { PluginState } from 'mol-plugin/state';
-import { Canvas3D } from 'mol-canvas3d/canvas3d';
-import {OrderedSet} from 'immutable';
+//import {OrderedSet} from 'immutable';
 require('mol-plugin/skin/light.scss')
 
 
@@ -64,8 +63,8 @@ class MolStarPLYWrapper {
     get klick(){
     this.plugin.canvas3d.interaction.click.subscribe(e =>{
           console.log('atomID', e)
-            aminoAcid = 169;
-          console.log(OrderedSet.fromKeys(e.current.loci.groups.0.ids))
+           // aminoAcid = 169;
+          //console.log(OrderedSet.fromKeys(e.current.loci.groups.0.ids));
         })
         return 0
     }
@@ -99,7 +98,7 @@ class MolStarPLYWrapper {
 
     private visual(ref: string, style?: RepresentationStyle) {
         const structure = this.getObj<PluginStateObject.Molecule.Structure>(ref);
-        number_of_atoms = structure.units[0].elements.length)  // global varable in index.html
+        //number_of_atoms = structure.units[0].elements.length // global varable in index.html
         if (!structure) return;
 
         const root = this.state.build().to(ref);

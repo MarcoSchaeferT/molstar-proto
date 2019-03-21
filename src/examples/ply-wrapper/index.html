@@ -12,23 +12,23 @@
             }
             #app {
                 position: absolute;
-                left: 160px;
-                top: 100px;
-                width: 600px;
+                left: 150px;
+                top: 70px;
+                width: 750px;
                 height: 400px;
                 border: 1px solid #ccc;
             }
             #select {
                 position: absolute;
                 left: 10px;
-                top: 480px;
+                top: 460px;
             }
             #diagram {
                 position: absolute;
                 left: 10px;
-                top: 520px;
-                width: 1210px;
-                height: 510px;
+                top: 480px;
+                width: 1705px;
+                height: 470px;
                 border: 1px solid #ccc;
             }
 
@@ -60,7 +60,10 @@
         <!--<link rel="stylesheet" type="text/css" href="/FProject5.3/dist/slimselect.css" />-->
     </head>
     <body>
-    <script>var aminoAcid = 68</script>
+    <script>
+        var aminoAcid = 20;
+        var number_of_atoms = 0;
+    </script>
         <div id='controls'>
             <h3>Source</h3>
             <input type='text' id='plyurl' placeholder='plyurl' style='width: 400px' />
@@ -80,15 +83,15 @@
 
             function $(id) { return document.getElementById(id); }
         
-            var pdbId = '1tca', assemblyId= 'preferred';
-            var url = '/test-data/' + pdbId + '_updated.cif';
-            var format = 'cif';
+            var pdbId = 'run_0', assemblyId= 'preferred';
+            var url = '/test-data/' + pdbId + '.pdb';
+            var format = 'pdb';
 
             var plyName = 'run_0_mesh';
             var plyurl = '/test-data/' + plyName + '.ply';
 
             $('plyurl').value = plyurl;
-            $('plyurl').onchange = function (e) { url = e.target.value; }
+            $('plyurl').onchange = function (e) { plyurl = e.target.value; }
             $('url').value = url;
             $('url').onchange = function (e) { url = e.target.value; }
             $('assemblyId').value = assemblyId;
@@ -111,8 +114,8 @@
 
 
 
-            addControl('Load Asym Unit', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format }));
-            addControl('Load Assembly', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format, assemblyId: assemblyId }));
+            addControl('Load ', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format }));
+            //addControl('Load Assembly', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format, assemblyId: assemblyId }));
 
             addSeparator();
 
@@ -121,27 +124,27 @@
             
             addSeparator();
 
-            addHeader('Animation');
+           // addHeader('Animation');
 
             // adjust this number to make the animation faster or slower
             // requires to "restart" the animation if changed
-            PluginWrapper.animate.modelIndex.maxFPS = 30;
+            // PluginWrapper.animate.modelIndex.maxFPS = 30;
 
-            addControl('Play To End', () => PluginWrapper.animate.modelIndex.onceForward());
-            addControl('Play To Start', () => PluginWrapper.animate.modelIndex.onceBackward());
-            addControl('Play Palindrome', () => PluginWrapper.animate.modelIndex.palindrome());
-            addControl('Play Loop', () => PluginWrapper.animate.modelIndex.loop());
-            addControl('Stop', () => PluginWrapper.animate.modelIndex.stop());
+            //addControl('Play To End', () => PluginWrapper.animate.modelIndex.onceForward());
+            //addControl('Play To Start', () => PluginWrapper.animate.modelIndex.onceBackward());
+            //addControl('Play Palindrome', () => PluginWrapper.animate.modelIndex.palindrome());
+            //addControl('Play Loop', () => PluginWrapper.animate.modelIndex.loop());
+            //addControl('Stop', () => PluginWrapper.animate.modelIndex.stop());
 
-            addSeparator();
-            addHeader('Misc');
+            //addSeparator();
+            //addHeader('Misc');
 
-            addControl('Apply Evo Cons', () => PluginWrapper.coloring.evolutionaryConservation());
-            addControl('Default Visuals', () => PluginWrapper.updateStyle());
+            //addControl('Apply Evo Cons', () => PluginWrapper.coloring.evolutionaryConservation());
+            //addControl('Default Visuals', () => PluginWrapper.updateStyle());
 
-            addSeparator();
-            addHeader('State');
-
+            //addSeparator();
+            //addHeader('State');
+            /*
             var snapshot;
             addControl('Create Snapshot', () => {
                 snapshot = PluginWrapper.snapshot.get();
@@ -154,7 +157,7 @@
                 // or download snapshot using fetch or ajax or whatever
                 // or PluginWrapper.snapshot.download(url);
             });
-
+            */
             ////////////////////////////////////////////////////////
 
             function addControl(label, action) {

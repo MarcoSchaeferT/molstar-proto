@@ -115,7 +115,7 @@ class MolStarPLYWrapper {
 
     private ColorParams: ColorParams = { colorMode: ''};
     changeColor({ colorMode }: ColorParams) {
-        console.log('colorMode:',colorMode);
+        console.log('colorMode:',colorMode, this.ColorParams);
         const tree = this.visual('asm');
 
        let red, green, blue  = '0';

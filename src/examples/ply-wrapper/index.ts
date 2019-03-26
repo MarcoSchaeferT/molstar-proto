@@ -19,14 +19,16 @@ import { LoadParams, SupportedFormats, RepresentationStyle, ModelInfo } from './
 import { RxEventHelper } from 'mol-util/rx-event-helper';
 import { ControlsWrapper } from './ui/controls';
 import { PluginState } from 'mol-plugin/state';
-// import { Canvas3D } from 'mol-canvas3d/canvas3d';
+//import { Canvas3D } from 'mol-canvas3d/canvas3d';
 import { OrderedSet } from 'mol-data/int';
 import { ShapeGroup } from 'mol-model/shape';
 
+export interface ColorParams {
+    colorMode: string
+}
+
 class MolStarPLYWrapper {
-    constructor() {
-        this.initClick()
-    }
+
 
     static VERSION_MAJOR = 2;
     static VERSION_MINOR = 0;
@@ -60,9 +62,9 @@ class MolStarPLYWrapper {
         this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider);
     }
 
-    private initClick() {
+    get initClick() {
         this.plugin.canvas3d.interaction.click.subscribe(e => {
-            const loci = e.current.loci
+            const loci = e.current.loci;
             if (!ShapeGroup.isLoci(loci)) return // ignore non-shape loci
             const atomID = OrderedSet.toArray(loci.groups[0].ids)[0]; // takes the first id of the first group
 
@@ -82,9 +84,10 @@ class MolStarPLYWrapper {
             const residueNumber = model.atomicHierarchy.residues.auth_seq_id.value(residueIndex)
             const residueName = model.atomicHierarchy.residues.auth_comp_id.value(residueIndex)
             const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex)
-
+            aminoAcid = residueNumber;
             this.events.residueInfo.next({ residueNumber, residueName, chainName })
         });
+        return 0;
     }
 
     get state() {
@@ -109,6 +112,41 @@ class MolStarPLYWrapper {
             .apply(StateTransforms.Representation.ShapeRepresentation3D);
     }
 
+
+    private ColorParams: ColorParams = { colorMode: ''};
+    changeColor({ colorMode }: ColorParams) {
+        console.log('colorMode:',colorMode);
+        const tree = this.visual('asm');
+
+       let red, green, blue  = '0';
+       if (colorMode === 'element'){
+           red = 'red';   green = 'green'; blue ='blue';
+       }
+       else if (colorMode === 'contactcount'){
+           red = 'contactcount_r';   green = 'contactcount_g'; blue ='contactcount_b';
+       }
+       else if (colorMode === 'contactsteps'){
+           red = 'contactsteps_r';   green = 'contactsteps_g'; blue ='contactsteps_b';
+       }
+       else if (colorMode === 'hbounds' ){
+           red = 'hbounds_r';   green = 'hbounds_g'; blue ='hbounds_b';
+       }
+        else if (colorMode === 'hboundsteps'){
+           red = 'hboundsteps_r';   green = 'hboundsteps_g'; blue ='hboundsteps_b';
+       }
+       else if (colorMode === 'spots'){
+           red = 'spots_r';   green = 'spots_g'; blue ='spots_b';
+       }
+       else if (colorMode === 'rmsf'){
+           red = 'rmsf_r';   green = 'rmsf_g'; blue ='rmsf_b';
+       }
+       console.log('color channels: ', red, green, blue);
+
+        if (!tree) return;
+        let state = this.state;
+        PluginCommands.State.Update.dispatch(this.plugin, { state, tree })
+    }
+
     private structure(assemblyId: string) {
         const model = this.state.build().to('model');
 
@@ -119,9 +157,12 @@ class MolStarPLYWrapper {
 
     private visual(ref: string, style?: RepresentationStyle) {
         const structure = this.getObj<PluginStateObject.Molecule.Structure>(ref);
-        number_of_atoms = structure.units[0].elements.length;  // global variable in index.html
-        console.log(structure)
-        if (!structure) return;
+
+        if (!structure){
+            return;
+        }else{
+            number_of_atoms = structure.units[0].elements.length;  // global variable in index.html
+        }
 
         const root = this.state.build().to(ref);
 

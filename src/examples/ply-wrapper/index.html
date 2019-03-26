@@ -25,10 +25,10 @@
             }
             #colorMode {
                 position: absolute;
-                width: 130px;
-                left: 10px;
-                top: 202px;
+                left: 0px;
+                top: 205px;
             }
+
             #diagram {
                 position: absolute;
                 left: 10px;
@@ -61,7 +61,7 @@
             }
         </style>
         <script>
-            var aminoAcid = 69
+            var aminoAcid = 91
             var number_of_atoms = 0;
         </script>
         <link rel="stylesheet" type="text/css" href="app.css" />
@@ -80,7 +80,7 @@
                 <option value='cif' selected>CIF</option>
                 <option value='pdb'>PDB</option>
             </select>
-        </div>
+
         <div id="app"></div>
         <script>
             // create an instance of the plugin
@@ -90,11 +90,11 @@
 
             function $(id) { return document.getElementById(id); }
 
-            var pdbId = 'run_0', assemblyId= 'preferred';
+            var pdbId = 'PS_273_ZINC000008101192fda_generated', assemblyId= 'preferred';
             var url = '/test-data/' + pdbId + '.pdb';
             var format = 'pdb';
 
-            var plyName = 'run_0_mesh';
+            var plyName = 'PS_273_ZINC000008101192fda_mesh';
             var plyurl = '/test-data/' + plyName + '.ply';
 
             $('plyurl').value = plyurl;
@@ -105,6 +105,7 @@
             $('assemblyId').onchange = function (e) { assemblyId = e.target.value; }
             $('format').value = format;
             $('format').onchange = function (e) { format = e.target.value; }
+            var colorMode = 'rmsf';
 
             // var url = 'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + pdbId + '.ent';
             // var format = 'pdb';
@@ -119,10 +120,23 @@
                 console.log('Model Info', info);
             });
 
+
             PluginWrapper.events.residueInfo.subscribe(function (info) {
                 console.log(`Clicked: [${info.residueName}]${info.residueNumber}:${info.chainName}`)
             });
 
+        </script>
+            <select id='colorMode'>
+                <option value='element' selected>element</option>
+                <option value='contactcount'>contactcount</option>
+                <option value='contactsteps'>contactsteps</option>
+                <option value='hbounds'>hbounds</option>
+                <option value='hboundsteps'>hboundsteps</option>
+                <option value='spots'>spots</option>
+                <option value='rmsf'>rmsf</option>
+            </select>
+        </div>
+        <script>
             addControl('Load ', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format }));
             //addControl('Load Assembly', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format, assemblyId: assemblyId }));
 
@@ -131,9 +145,17 @@
             addHeader('Camera');
             addControl('Toggle Spin', () => PluginWrapper.toggleSpin());
             addSeparator();
+
             addHeader('Color Mode');
 
+            $('colorMode').value = 'rmsf';
+            $('colorMode').onchange = function (e) { colorMode = e.target.value; }
+            addControl('change ', () => PluginWrapper.changeColor({ colorMode: colorMode }));
+            console.log('select:',colorMode)
 
+
+
+            PluginWrapper.initClick;
 
            // addHeader('Animation');
 
@@ -190,29 +212,31 @@
             }
 
         </script>
-        <select id='colorMode'>
-            <option value='element' selected>element</option>
-            <option value='contactcount'>contactcount</option>
-            <option value='contactsteps'>contactsteps</option>
-            <option value='hbounds'>hbounds</option>
-            <option value='hboundsteps'>hboundsteps</option>
-            <option value='spots'>spots</option>
-            <option value='rmsf'>rmsf</option>
-        </select>
+
+
 
         <!-- --------- FProject start --------- -->
         <select id="select" onchange="iniciar()">
-            <option value="/FProject5.3/Contact_density/run_0.json">Run 0</option>
-            <option value="/FProject5.3/Contact_density/run_1.json">Run 1</option>
-            <option value="/FProject5.3/Contact_density/run_2.json">Run 2</option>
-            <option value="/FProject5.3/Contact_density/run_3.json">Run 3</option>
-            <option value="/FProject5.3/Contact_density/run_4.json">Run 4</option>
-            <option value="/FProject5.3/Contact_density/run_5.json">Run 5</option>
-            <option value="/FProject5.3/Contact_density/run_6.json">Run 6</option>
-            <option value="/FProject5.3/Contact_density/run_7.json">Run 7</option>
-            <option value="/FProject5.3/Contact_density/run_8.json">Run 8</option>
-            <option value="/FProject5.3/Contact_density/run_9.json">Run 9</option>
-            <option value="/FProject5.3/Contact_density/run_total.json">Run total</option>
+            <option value="/FProject5.3/Contact_density/PS_273_ZINC000008101192fda_accum.json">PS_273</option>
+            <option value="/FProject5.3/Contact_density/PS_563_ZINC000060184549fda_accum.json">PS_563</option>
+            <option value="/FProject5.3/Contact_density/PS_564_ZINC000060184552fda_accum.json">PS_564</option>
+            <option value="/FProject5.3/Contact_density/PS_565_ZINC000060184554fda_accum.json">PS_565</option>
+            <option value="/FProject5.3/Contact_density/PS_566_ZINC000060184556fda_accum.json">PS_566</option>
+            <option value="/FProject5.3/Contact_density/PS_1043_ZINC000008101115fda_accum.json">PS_1043</option>
+            <option value="/FProject5.3/Contact_density/PS_1044_ZINC000008101116fda_accum.json">PS_1044</option>
+            <option value="/FProject5.3/Contact_density/PS_1045_ZINC000008101117fda_accum.json">PS_1045</option>
+            <option value="/FProject5.3/Contact_density/PS_2363_ZINC000242437514fda_accum.json">PS_2363</option>
+            <option value="/FProject5.3/Contact_density/PS_2973_ZINC000022443609fda_accum.json">PS_2973</option>
+            <option value="/FProject5.3/Contact_density/SDH_747_ZINC000033975089fda_accum.json">SDH_747</option>
+            <option value="/FProject5.3/Contact_density/SDH_805_ZINC000100218367fda_accum.json">SDH_805</option>
+            <option value="/FProject5.3/Contact_density/SDH_905_ZINC000003830773fda_accum.json">SDH_905</option>
+            <option value="/FProject5.3/Contact_density/SDH_1778_ZINC000004629876fda_accum.json">SDH_1778</option>
+            <option value="/FProject5.3/Contact_density/SDH_2418_ZINC000169289411fda_accum.json">SDH_2418</option>
+            <option value="/FProject5.3/Contact_density/SDH_2451_ZINC000013911941fda_accum.json">SDH_2451</option>
+            <option value="/FProject5.3/Contact_density/SDH_2683_ZINC000003914809fda_accum.json">SDH_2683</option>
+            <option value="/FProject5.3/Contact_density/SDH_2685_ZINC000169677008fda_accum.json">SDH_2685</option>
+            <option value="/FProject5.3/Contact_density/SDH_2796_ZINC000169621228fda_accum.json">SDH_2796</option>
+            <option value="/FProject5.3/Contact_density/SDH_2906_ZINC000004641374fda_accum.json">SDH_2906</option>
         </select>
         <div id="diagram">
         </div>

@@ -82,14 +82,14 @@
             </select>
         </div>
         <div id="app"></div>
-        <script>  
+        <script>
             // create an instance of the plugin
             var PluginWrapper = new MolStarPLYWrapper();
 
             console.log('Wrapper version', MolStarPLYWrapper.VERSION_MAJOR);
 
             function $(id) { return document.getElementById(id); }
-        
+
             var pdbId = 'run_0', assemblyId= 'preferred';
             var url = '/test-data/' + pdbId + '.pdb';
             var format = 'pdb';
@@ -119,7 +119,9 @@
                 console.log('Model Info', info);
             });
 
-
+            PluginWrapper.events.residueInfo.subscribe(function (info) {
+                console.log(`Clicked: [${info.residueName}]${info.residueNumber}:${info.chainName}`)
+            });
 
             addControl('Load ', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format }));
             //addControl('Load Assembly', () => PluginWrapper.load({ plyurl: plyurl, url: url, format: format, assemblyId: assemblyId }));
@@ -186,7 +188,7 @@
                 h.innerText = header;
                 $('controls').appendChild(h);
             }
-        PluginWrapper.click;
+
         </script>
         <select id='colorMode'>
             <option value='element' selected>element</option>

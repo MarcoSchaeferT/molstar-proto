@@ -19,17 +19,23 @@ import { LoadParams, SupportedFormats, RepresentationStyle, ModelInfo } from './
 import { RxEventHelper } from 'mol-util/rx-event-helper';
 import { ControlsWrapper } from './ui/controls';
 import { PluginState } from 'mol-plugin/state';
-//import { Canvas3D } from 'mol-canvas3d/canvas3d';
-import {OrderedSet} from 'immutable';
+// import { Canvas3D } from 'mol-canvas3d/canvas3d';
+import { OrderedSet } from 'mol-data/int';
+import { ShapeGroup } from 'mol-model/shape';
 
 class MolStarPLYWrapper {
+    constructor() {
+        this.initClick()
+    }
+
     static VERSION_MAJOR = 2;
     static VERSION_MINOR = 0;
 
     private _ev = RxEventHelper.create();
 
     readonly events = {
-        modelInfo: this._ev<ModelInfo>()
+        modelInfo: this._ev<ModelInfo>(),
+        residueInfo: this._ev<{ residueNumber: number, residueName: string, chainName: string }>()
     };
 
 
@@ -54,23 +60,36 @@ class MolStarPLYWrapper {
         this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider);
     }
 
+    private initClick() {
+        this.plugin.canvas3d.interaction.click.subscribe(e => {
+            const loci = e.current.loci
+            if (!ShapeGroup.isLoci(loci)) return // ignore non-shape loci
+            const atomID = OrderedSet.toArray(loci.groups[0].ids)[0]; // takes the first id of the first group
+
+            // use the model to related the atomID because the atomID is best viewed as a model property and
+            // not as a structure property (a structure can be build from multiple models)
+            const model = this.getObj<PluginStateObject.Molecule.Model>('model');
+            if (!model) return // handle missing model case
+
+            // assume the atomID is an index starting from 1
+            const atomIndex = atomID - 1
+
+            // get indices
+            const residueIndex = model.atomicHierarchy.residueAtomSegments.index[atomIndex]
+            const chainIndex = model.atomicHierarchy.chainAtomSegments.index[residueIndex]
+
+            // get infos
+            const residueNumber = model.atomicHierarchy.residues.auth_seq_id.value(residueIndex)
+            const residueName = model.atomicHierarchy.residues.auth_comp_id.value(residueIndex)
+            const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex)
+
+            this.events.residueInfo.next({ residueNumber, residueName, chainName })
+        });
+    }
+
     get state() {
         return this.plugin.state.dataState;
     }
-
-    get click(){
-    this.plugin.canvas3d.interaction.click.subscribe(e =>{
-          console.log('atomID', e.current.loci);
-          let atomID = 196;
-          const structure = this.getObj<PluginStateObject.Molecule.Structure>('asm');
-          aminoAcid = structure.units[0].residueIndex[structure.units[0].elements[atomID]]-1;
-
-          console.log('Aminoacid:',aminoAcid)
-          console.log(OrderedSet.fromKeys(e.current.loci));
-        });
-        return 0
-    }
-
 
     private download(b: StateBuilder.To<PSO.Root>, url: string) {
         return b.apply(StateTransforms.Data.Download, { url, isBinary: false })

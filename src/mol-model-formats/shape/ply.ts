@@ -19,10 +19,12 @@ import { ParamDefinition as PD } from 'mol-util/param-definition';
 import { ColorNames } from 'mol-util/color/tables';
 import { deepClone } from 'mol-util/object';
 
+let ex = require('../../examples/ply-wrapper/data_exchange')
+
 // TODO support 'edge' element, see https://www.mathworks.com/help/vision/ug/the-ply-format.html
 // TODO support missing face element
 
-function createPlyShapeParams(plyFile?: PlyFile) {
+function createPlyShapeParams( plyFile?: PlyFile) {
     const vertex = plyFile && plyFile.getElement('vertex') as PlyTable
     const material = plyFile && plyFile.getElement('material') as PlyTable
 
@@ -46,9 +48,16 @@ function createPlyShapeParams(plyFile?: PlyFile) {
         if (vertex.propertyNames.includes('atomid')) defaultValues.group = 'atomid'
         else if (vertex.propertyNames.includes('material_index')) defaultValues.group = 'material_index'
 
-        if (vertex.propertyNames.includes('red')) defaultValues.vRed = 'red'
-        if (vertex.propertyNames.includes('green')) defaultValues.vGreen = 'green'
-        if (vertex.propertyNames.includes('blue')) defaultValues.vBlue = 'blue'
+        if(typeof ex.colorMode_r !== 'undefined'){
+            if (vertex.propertyNames.includes('red')) defaultValues.vRed = ex.colorMode_r;
+            if (vertex.propertyNames.includes('green')) defaultValues.vGreen = ex.colorMode_g;
+            if (vertex.propertyNames.includes('blue')) defaultValues.vBlue = ex.colorMode_b;
+        }else {
+            if (vertex.propertyNames.includes('red')) defaultValues.vRed = 'red'
+            if (vertex.propertyNames.includes('green')) defaultValues.vGreen = 'green'
+            if (vertex.propertyNames.includes('blue')) defaultValues.vBlue = 'blue'
+        }
+
     }
 
     const materialOptions: [string, string][] = [['', '']]

@@ -21,10 +21,17 @@ import { ControlsWrapper } from './ui/controls';
 import { PluginState } from 'mol-plugin/state';
 //import { Canvas3D } from 'mol-canvas3d/canvas3d';
 import { OrderedSet } from 'mol-data/int';
-import { ShapeGroup } from 'mol-model/shape';
+import {ShapeGroup} from 'mol-model/shape';
+import {MarkerAction} from '../../mol-geo/geometry/marker-data';
+
+
 
 export interface ColorParams {
-    colorMode: string
+    colorMode: string,
+    plyurl: string,
+    url: string,
+    format: "pdb",
+    assemblyId: string
 }
 
 class MolStarPLYWrapper {
@@ -62,15 +69,39 @@ class MolStarPLYWrapper {
         this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider);
     }
 
+    changeMark(old_ami: number){
+        const model = this.getObj<PluginStateObject.Molecule.Model>('model');
+        let test_aminoacid = 0;
+
+        if(mesh_object_e !== 0) {
+            for (let i = 1; i <= number_of_atoms; i++) {
+                test_aminoacid = model.atomicHierarchy.residues.auth_seq_id.value(model.atomicHierarchy.residueAtomSegments.index[i])
+                if (test_aminoacid === aminoAcid) {
+                    this.plugin.canvas3d.mark({
+                        repr: mesh_object_e.current.repr,
+                        loci: ShapeGroup.Loci(mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
+                    }, MarkerAction.Highlight)
+                } else if(test_aminoacid === old_ami) {
+                    this.plugin.canvas3d.mark({
+                        repr: mesh_object_e.current.repr,
+                        loci: ShapeGroup.Loci(mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
+                    }, MarkerAction.RemoveHighlight)
+                }
+            }
+        }
+        return 0;
+    }
     get initClick() {
         this.plugin.canvas3d.interaction.click.subscribe(e => {
             const loci = e.current.loci;
+            mesh_object_e = e;
             if (!ShapeGroup.isLoci(loci)) return // ignore non-shape loci
             const atomID = OrderedSet.toArray(loci.groups[0].ids)[0]; // takes the first id of the first group
 
             // use the model to related the atomID because the atomID is best viewed as a model property and
             // not as a structure property (a structure can be build from multiple models)
             const model = this.getObj<PluginStateObject.Molecule.Model>('model');
+
             if (!model) return // handle missing model case
 
             // assume the atomID is an index starting from 1
@@ -85,8 +116,9 @@ class MolStarPLYWrapper {
             const residueName = model.atomicHierarchy.residues.auth_comp_id.value(residueIndex)
             const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex)
             aminoAcid = residueNumber;
-            this.events.residueInfo.next({ residueNumber, residueName, chainName })
-        });
+            this.events.residueInfo.next({residueNumber, residueName, chainName})
+
+             });
         return 0;
     }
 
@@ -110,11 +142,13 @@ class MolStarPLYWrapper {
         return b.apply(StateTransforms.Data.ParsePly)
             .apply(StateTransforms.Model.ShapeFromPly)
             .apply(StateTransforms.Representation.ShapeRepresentation3D);
+
     }
 
 
-    private ColorParams: ColorParams = { colorMode: ''};
-    changeColor({ colorMode }: ColorParams) {
+    private ColorParams: ColorParams = { colorMode: '', plyurl: '',  url: '', format: 'pdb', assemblyId: ''};
+    changeColor({ colorMode, plyurl, url, format, assemblyId }: ColorParams) {
+        this.load({ plyurl: plyurl, url: url, format: format})
         console.log('colorMode:',colorMode, this.ColorParams);
         const tree = this.visual('asm');
 
@@ -128,11 +162,14 @@ class MolStarPLYWrapper {
        else if (colorMode === 'contactsteps'){
            red = 'contactsteps_r';   green = 'contactsteps_g'; blue ='contactsteps_b';
        }
-       else if (colorMode === 'hbounds' ){
-           red = 'hbounds_r';   green = 'hbounds_g'; blue ='hbounds_b';
+       else if (colorMode === 'hbonds' ){
+           red = 'hbonds_r';   green = 'hbonds_g'; blue ='hbonds_b';
        }
-        else if (colorMode === 'hboundsteps'){
-           red = 'hboundsteps_r';   green = 'hboundsteps_g'; blue ='hboundsteps_b';
+        else if (colorMode === 'hbondsteps'){
+           red = 'hbondsteps_r';   green = 'hbondsteps_g'; blue ='hbondsteps_b';
+       }
+       else if (colorMode === 'molcount'){
+           red = 'molcount_r';   green = 'molcount_g'; blue ='molcount_b';
        }
        else if (colorMode === 'spots'){
            red = 'spots_r';   green = 'spots_g'; blue ='spots_b';
@@ -140,8 +177,11 @@ class MolStarPLYWrapper {
        else if (colorMode === 'rmsf'){
            red = 'rmsf_r';   green = 'rmsf_g'; blue ='rmsf_b';
        }
-       console.log('color channels: ', red, green, blue);
-
+        let ex = require('../../examples/ply-wrapper/data_exchange')
+        ex.colorMode_r = red;
+        ex.colorMode_g = green;
+        ex.colorMode_b = blue;
+        console.log(red,green,blue)
         if (!tree) return;
         let state = this.state;
         PluginCommands.State.Update.dispatch(this.plugin, { state, tree })
@@ -157,11 +197,10 @@ class MolStarPLYWrapper {
 
     private visual(ref: string, style?: RepresentationStyle) {
         const structure = this.getObj<PluginStateObject.Molecule.Structure>(ref);
-
         if (!structure){
             return;
         }else{
-            number_of_atoms = structure.units[0].elements.length;  // global variable in index.html
+            number_of_atoms = structure.units[0].elements.length;    // global variable in index.html
         }
 
         const root = this.state.build().to(ref);
@@ -219,6 +258,7 @@ class MolStarPLYWrapper {
         } else if (this.loadedParams.url === url) {
             if (state.select('asm').length > 0) loadType = 'update';
         }
+        loadType = 'full';
 
         if (loadType === 'full') {
             await PluginCommands.State.RemoveObject.dispatch(this.plugin, { state, ref: state.tree.root.ref });

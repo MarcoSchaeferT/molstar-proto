@@ -1,10 +1,14 @@
+import {Shape} from 'mol-model/shape';
 var aminoAcid = 0;
 var number_of_atoms = 0;
 var colorMode_r = '0';
 var colorMode_g = '0';
 var colorMode_b = '0';
 
-var mesh_object_e = {};
+var loci = {shape: Shape};
+var current = {loci};
+var mesh_object_e = {current};
+
 
 exports.aminoAcid = aminoAcid;
 exports.number_of_atoms = number_of_atoms;

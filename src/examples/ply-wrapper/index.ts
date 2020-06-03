@@ -23,6 +23,7 @@ import { PluginState } from 'mol-plugin/state';
 import { OrderedSet } from 'mol-data/int';
 import {ShapeGroup} from 'mol-model/shape';
 import {MarkerAction} from '../../mol-geo/geometry/marker-data';
+let ex = require('../../examples/ply-wrapper/data_exchange')
 
 
 
@@ -73,18 +74,18 @@ class MolStarPLYWrapper {
         const model = this.getObj<PluginStateObject.Molecule.Model>('model');
         let test_aminoacid = 0;
 
-        if(mesh_object_e !== 0) {
-            for (let i = 1; i <= number_of_atoms; i++) {
+        if(ex.mesh_object_e !== 0) {
+            for (let i = 1; i <= ex.number_of_atoms; i++) {
                 test_aminoacid = model.atomicHierarchy.residues.auth_seq_id.value(model.atomicHierarchy.residueAtomSegments.index[i])
-                if (test_aminoacid === aminoAcid) {
+                if (test_aminoacid === ex.aminoAcid) {
                     this.plugin.canvas3d.mark({
-                        repr: mesh_object_e.current.repr,
-                        loci: ShapeGroup.Loci(mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
+                        repr: ex.mesh_object_e.current.repr,
+                        loci: ShapeGroup.Loci(ex.mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
                     }, MarkerAction.Highlight)
                 } else if(test_aminoacid === old_ami) {
                     this.plugin.canvas3d.mark({
-                        repr: mesh_object_e.current.repr,
-                        loci: ShapeGroup.Loci(mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
+                        repr: ex.mesh_object_e.current.repr,
+                        loci: ShapeGroup.Loci(ex.mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
                     }, MarkerAction.RemoveHighlight)
                 }
             }
@@ -94,7 +95,7 @@ class MolStarPLYWrapper {
     get initClick() {
         this.plugin.canvas3d.interaction.click.subscribe(e => {
             const loci = e.current.loci;
-            mesh_object_e = e;
+            ex.mesh_object_e = e;
             if (!ShapeGroup.isLoci(loci)) return // ignore non-shape loci
             const atomID = OrderedSet.toArray(loci.groups[0].ids)[0]; // takes the first id of the first group
 
@@ -115,7 +116,7 @@ class MolStarPLYWrapper {
             const residueNumber = model.atomicHierarchy.residues.auth_seq_id.value(residueIndex)
             const residueName = model.atomicHierarchy.residues.auth_comp_id.value(residueIndex)
             const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex)
-            aminoAcid = residueNumber;
+            ex.aminoAcid = residueNumber;
             this.events.residueInfo.next({residueNumber, residueName, chainName})
 
              });
@@ -177,7 +178,6 @@ class MolStarPLYWrapper {
        else if (colorMode === 'rmsf'){
            red = 'rmsf_r';   green = 'rmsf_g'; blue ='rmsf_b';
        }
-        let ex = require('../../examples/ply-wrapper/data_exchange')
         ex.colorMode_r = red;
         ex.colorMode_g = green;
         ex.colorMode_b = blue;
@@ -200,7 +200,7 @@ class MolStarPLYWrapper {
         if (!structure){
             return;
         }else{
-            number_of_atoms = structure.units[0].elements.length;    // global variable in index.html
+            ex.number_of_atoms = structure.units[0].elements.length;    // global variable in index.html
         }
 
         const root = this.state.build().to(ref);

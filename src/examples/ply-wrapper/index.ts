@@ -4,25 +4,27 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { createPlugin, DefaultPluginSpec } from 'mol-plugin';
+import { createPlugin, DefaultPluginSpec } from '../../mol-plugin';
 import './index.html'
-import { PluginContext } from 'mol-plugin/context';
-import { PluginCommands } from 'mol-plugin/command';
-import { StateTransforms } from 'mol-plugin/state/transforms';
-import { StructureRepresentation3DHelpers } from 'mol-plugin/state/transforms/representation';
-import { Color } from 'mol-util/color';
-import { PluginStateObject as PSO, PluginStateObject } from 'mol-plugin/state/objects';
-import { AnimateModelIndex } from 'mol-plugin/state/animation/built-in';
-import {StateBuilder, StateObject} from 'mol-state';
-import { EvolutionaryConservation } from './annotation';
+import { PluginContext } from '../../mol-plugin/context';
+import { PluginCommands } from '../../mol-plugin/commands';
+import { StateTransforms } from '../../mol-plugin-state/transforms';
+import { createStructureRepresentationParams } from '../../mol-plugin-state/helpers/structure-representation-params';
+import { Color } from '../../mol-util/color';
+import { PluginStateObject as PSO, PluginStateObject } from '../../mol-plugin-state/objects';
+import { AnimateModelIndex } from '../../mol-plugin-state/animation/built-in';
+import {StateBuilder, StateObject} from '../../mol-state';
+import { EvolutionaryConservation } from '../proteopedia-wrapper/annotation';
 import { LoadParams, SupportedFormats, RepresentationStyle, ModelInfo } from './helpers';
-import { RxEventHelper } from 'mol-util/rx-event-helper';
-import { ControlsWrapper } from './ui/controls';
-import { PluginState } from 'mol-plugin/state';
-//import { Canvas3D } from 'mol-canvas3d/canvas3d';
-import { OrderedSet } from 'mol-data/int';
-import {ShapeGroup} from 'mol-model/shape';
-import {MarkerAction} from '../../mol-geo/geometry/marker-data';
+import { RxEventHelper } from '../../mol-util/rx-event-helper';
+//import { ControlsWrapper } from './ui/controls';
+import { PluginState } from '../../mol-plugin/state';
+//import { Canvas3D } from '../../mol-canvas3d/canvas3d';
+import { OrderedSet } from '../../mol-data/int';
+import {ShapeGroup} from '../../mol-model/shape';
+import {MarkerAction} from '../../mol-util/marker-action';
+import {StateElements} from "../proteopedia-wrapper/helpers";
+//import {volumeStreamingControls} from "../proteopedia-wrapper/ui/controls";
 let ex = require('../../examples/ply-wrapper/data_exchange')
 
 
@@ -58,16 +60,14 @@ class MolStarPLYWrapper {
                 initial: {
                     isExpanded: false,
                     showControls: false
-                },
-                controls: {
-                    right: ControlsWrapper
                 }
-            }
-        });
+            },
 
-        this.plugin.structureRepresentation.themeCtx.colorThemeRegistry.add(EvolutionaryConservation.Descriptor.name, EvolutionaryConservation.colorTheme!);
-        this.plugin.lociLabels.addProvider(EvolutionaryConservation.labelProvider);
-        this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider);
+        });
+       // ControlsWrapper(this.plugin, parent);
+        this.plugin.representation.structure.themes.colorThemeRegistry.add(EvolutionaryConservation.colorThemeProvider!);
+        this.plugin.managers.lociLabels.addProvider(EvolutionaryConservation.labelProvider!);
+        this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider, true);
     }
 
     changeMark(old_ami: number){
@@ -78,14 +78,19 @@ class MolStarPLYWrapper {
             for (let i = 1; i <= ex.number_of_atoms; i++) {
                 test_aminoacid = model.atomicHierarchy.residues.auth_seq_id.value(model.atomicHierarchy.residueAtomSegments.index[i])
                 if (test_aminoacid === ex.aminoAcid) {
-                    this.plugin.canvas3d.mark({
-                        repr: ex.mesh_object_e.current.repr,
-                        loci: ShapeGroup.Loci(ex.mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
-                    }, MarkerAction.Highlight)
+                    if (!this.plugin.canvas3d) {return};
+                        this.plugin.canvas3d.mark({
+                            repr: ex.mesh_object_e.current.repr,
+                            loci: ShapeGroup.Loci(ex.mesh_object_e.current.loci.shape, [{
+                                ids: OrderedSet.ofSingleton(i),
+                                instance: 0
+                            }])
+                        }, MarkerAction.Highlight)
                 } else if(test_aminoacid === old_ami) {
+                    if (!this.plugin.canvas3d) {return};
                     this.plugin.canvas3d.mark({
                         repr: ex.mesh_object_e.current.repr,
-                        loci: ShapeGroup.Loci(ex.mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i)}], 0)
+                        loci: ShapeGroup.Loci(ex.mesh_object_e.current.loci.shape, [{ids: OrderedSet.ofSingleton(i), instance: 0}])
                     }, MarkerAction.RemoveHighlight)
                 }
             }
@@ -93,6 +98,7 @@ class MolStarPLYWrapper {
         return 0;
     }
     get initClick() {
+        if (!this.plugin.canvas3d) {return};
         this.plugin.canvas3d.interaction.click.subscribe(e => {
             const loci = e.current.loci;
             ex.mesh_object_e = e;
@@ -114,7 +120,7 @@ class MolStarPLYWrapper {
 
             // get infos
             const residueNumber = model.atomicHierarchy.residues.auth_seq_id.value(residueIndex)
-            const residueName = model.atomicHierarchy.residues.auth_comp_id.value(residueIndex)
+            const residueName = model.atomicHierarchy.atoms.auth_comp_id.value(residueIndex)
             const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex)
             ex.aminoAcid = residueNumber;
             this.events.residueInfo.next({residueNumber, residueName, chainName})
@@ -124,7 +130,7 @@ class MolStarPLYWrapper {
     }
 
     get state() {
-        return this.plugin.state.dataState;
+        return this.plugin.state.data;
     }
 
     private download(b: StateBuilder.To<PSO.Root>, url: string) {
@@ -139,7 +145,7 @@ class MolStarPLYWrapper {
             .apply(StateTransforms.Model.ModelFromTrajectory, { modelIndex: 0 }, { ref: 'model' });
     }
 
-    private plyData(b: StateBuilder.To<PSO.Data.String>) {
+    private plyData(b: StateBuilder.To<PSO.Data.Binary | PSO.Data.String>) {
         return b.apply(StateTransforms.Data.ParsePly)
             .apply(StateTransforms.Model.ShapeFromPly)
             .apply(StateTransforms.Representation.ShapeRepresentation3D);
@@ -184,15 +190,29 @@ class MolStarPLYWrapper {
         console.log(red,green,blue)
         if (!tree) return;
         let state = this.state;
-        PluginCommands.State.Update.dispatch(this.plugin, { state, tree })
+        PluginCommands.State.Update(this.plugin, { state, tree })
     }
 
     private structure(assemblyId: string) {
-        const model = this.state.build().to('model');
+        const model = this.state.build().to(StateElements.Model);
+        const props = {
+            type: assemblyId ? {
+                name: 'assembly' as const,
+                params: { id: assemblyId }
+            } : {
+                name: 'model' as const,
+                params: { }
+            }
+        };
 
-        return model
-            .apply(StateTransforms.Model.CustomModelProperties, { properties: [EvolutionaryConservation.Descriptor.name] }, { ref: 'props', props: { isGhost: false } })
-            .apply(StateTransforms.Model.StructureAssemblyFromModel, { id: assemblyId || 'deposited' }, { ref: 'asm' });
+        const s = model
+            .apply(StateTransforms.Model.StructureFromModel, props, { ref: StateElements.Assembly });
+
+        s.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-sequence' }, { ref: StateElements.Sequence });
+        s.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-het' }, { ref: StateElements.Het });
+        s.apply(StateTransforms.Model.StructureComplexElement, { type: 'water' }, { ref: StateElements.Water });
+
+        return s;
     }
 
     private visual(ref: string, style?: RepresentationStyle) {
@@ -207,21 +227,22 @@ class MolStarPLYWrapper {
 
         root.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-sequence' }, { ref: 'sequence' })
             .apply(StateTransforms.Representation.StructureRepresentation3D,
-                StructureRepresentation3DHelpers.getDefaultParamsWithTheme(this.plugin,
-                    (style && style.sequence && style.sequence.kind) || 'cartoon',
-                    (style && style.sequence && style.sequence.coloring) || 'unit-index', structure),
+                createStructureRepresentationParams(this.plugin, structure, {
+                    type: (style && style.sequence && style.sequence.kind) || 'cartoon',
+                    color: (style && style.sequence && style.sequence.coloring) || 'unit-index'}),
                     { ref: 'sequence-visual' });
         root.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-het' }, { ref: 'het' })
             .apply(StateTransforms.Representation.StructureRepresentation3D,
-                StructureRepresentation3DHelpers.getDefaultParamsWithTheme(this.plugin,
-                    (style && style.hetGroups && style.hetGroups.kind) || 'ball-and-stick',
-                    (style && style.hetGroups && style.hetGroups.coloring), structure),
+                createStructureRepresentationParams(this.plugin, structure,{
+                    type: (style && style.hetGroups && style.hetGroups.kind) || 'ball-and-stick',
+                    color: (style && style.hetGroups && style.hetGroups.coloring)}),
                     { ref: 'het-visual' });
         root.apply(StateTransforms.Model.StructureComplexElement, { type: 'water' }, { ref: 'water' })
             .apply(StateTransforms.Representation.StructureRepresentation3D,
-                StructureRepresentation3DHelpers.getDefaultParamsWithTheme(this.plugin,
-                    (style && style.water && style.water.kind) || 'ball-and-stick',
-                    (style && style.water && style.water.coloring), structure, { alpha: 0.51 }),
+                createStructureRepresentationParams(this.plugin, structure,{
+                    type: (style && style.water && style.water.kind) || 'ball-and-stick',
+                    color: (style && style.water && style.water.coloring),
+                    typeParams: { alpha: 0.51 }}),
                     { ref: 'water-visual' });
 
         return root;
@@ -244,14 +265,14 @@ class MolStarPLYWrapper {
     }
 
     private applyState(tree: StateBuilder) {
-        return PluginCommands.State.Update.dispatch(this.plugin, { state: this.plugin.state.dataState, tree });
+        return PluginCommands.State.Update(this.plugin, { state: this.plugin.state.data, tree });
     }
 
     private loadedParams: LoadParams = { plyurl: '',  url: '', format: 'cif', assemblyId: '' };
     async load({ plyurl, url, format = 'cif', assemblyId = '', representationStyle }: LoadParams) {
         let loadType: 'full' | 'update' = 'full';
 
-        const state = this.plugin.state.dataState;
+        const state = this.plugin.state.data;
 
         if (this.loadedParams.plyurl !== plyurl || this.loadedParams.url !== url || this.loadedParams.format !== format) {
             loadType = 'full';
@@ -261,7 +282,7 @@ class MolStarPLYWrapper {
         loadType = 'full';
 
         if (loadType === 'full') {
-            await PluginCommands.State.RemoveObject.dispatch(this.plugin, { state, ref: state.tree.root.ref });
+            await PluginCommands.State.RemoveObject(this.plugin, { state, ref: state.tree.root.ref });
             // pdb/cif loading
             const modelTree = this.model(this.download(state.build().toRoot(), url), format, assemblyId);
             await this.applyState(modelTree);
@@ -273,59 +294,65 @@ class MolStarPLYWrapper {
             await this.applyState(modelTreePly);
         } else {
             const tree = state.build();
-            tree.to('asm').update(StateTransforms.Model.StructureAssemblyFromModel, p => ({ ...p, id: assemblyId || 'deposited' }));
+            tree.to('asm').update(StateTransforms.Model.StructureFromModel, p => ({ ...p, id: assemblyId || 'deposited' }));
             await this.applyState(tree);
         }
 
         await this.updateStyle(representationStyle);
 
         this.loadedParams = { plyurl, url, format, assemblyId };
-        PluginCommands.Camera.Reset.dispatch(this.plugin, { });
+        PluginCommands.Camera.Reset(this.plugin, { });
     }
 
     async updateStyle(style?: RepresentationStyle) {
         const tree = this.visual('asm', style);
         if (!tree) return;
-        await PluginCommands.State.Update.dispatch(this.plugin, { state: this.plugin.state.dataState, tree });
+        await PluginCommands.State.Update(this.plugin, { state: this.plugin.state.data, tree });
     }
 
     setBackground(color: number) {
-        PluginCommands.Canvas3D.SetSettings.dispatch(this.plugin, { settings: { backgroundColor: Color(color) } });
+        if (!this.plugin.canvas3d) return;
+        const renderer = this.plugin.canvas3d.props.renderer;
+        PluginCommands.Canvas3D.SetSettings(this.plugin, { settings: { renderer: { ...renderer,  backgroundColor: Color(color) } } });
     }
 
     toggleSpin() {
+        if (!this.plugin.canvas3d) {return};
         const trackball = this.plugin.canvas3d.props.trackball;
         const spinning = trackball.spin;
-        PluginCommands.Canvas3D.SetSettings.dispatch(this.plugin, { settings: { trackball: { ...trackball, spin: !trackball.spin } } });
-        if (!spinning) PluginCommands.Camera.Reset.dispatch(this.plugin, { });
+        PluginCommands.Canvas3D.SetSettings(this.plugin, { settings: { trackball: { ...trackball, spin: !trackball.spin } } });
+        if (!spinning) PluginCommands.Camera.Reset(this.plugin, { });
     }
 
     animate = {
         modelIndex: {
             maxFPS: 8,
-            onceForward: () => { this.plugin.state.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'once', params: { direction: 'forward' } } }) },
-            onceBackward: () => { this.plugin.state.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'once', params: { direction: 'backward' } } }) },
-            palindrome: () => { this.plugin.state.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'palindrome', params: {} } }) },
-            loop: () => { this.plugin.state.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'loop', params: {} } }) },
-            stop: () => this.plugin.state.animation.stop()
+            onceForward: () => { this.plugin.managers.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'once', params: { direction: 'forward' } } }) },
+            onceBackward: () => { this.plugin.managers.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'once', params: { direction: 'backward' } } }) },
+            palindrome: () => { this.plugin.managers.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'palindrome', params: {} } }) },
+            loop: () => { this.plugin.managers.animation.play(AnimateModelIndex, { maxFPS: Math.max(0.5, this.animate.modelIndex.maxFPS | 0), mode: { name: 'loop', params: {} } }) },
+            stop: () => this.plugin.managers.animation.stop()
         }
     }
 
     coloring = {
-        evolutionaryConservation: async () => {
-            await this.updateStyle({ sequence: { kind: 'spacefill' } });
+        evolutionaryConservation: async (params?: { sequence?: boolean, het?: boolean, keepStyle?: boolean }) => {
+            if (!params || !params.keepStyle) {
+                await this.updateStyle({ sequence: { kind: 'spacefill' } });
+            }
 
             const state = this.state;
-
-            // const visuals = state.selectQ(q => q.ofType(PluginStateObject.Molecule.Structure.Representation3D).filter(c => c.transform.transformer === StateTransforms.Representation.StructureRepresentation3D));
             const tree = state.build();
-            const colorTheme = { name: EvolutionaryConservation.Descriptor.name, params: this.plugin.structureRepresentation.themeCtx.colorThemeRegistry.get(EvolutionaryConservation.Descriptor.name).defaultValues };
+            const colorTheme = { name: EvolutionaryConservation.propertyProvider.descriptor.name, params: this.plugin.representation.structure.themes.colorThemeRegistry.get(EvolutionaryConservation.propertyProvider.descriptor.name).defaultValues };
 
-            tree.to('sequence-visual').update(StateTransforms.Representation.StructureRepresentation3D, old => ({ ...old, colorTheme }));
-            // for (const v of visuals) {
-            // }
+            if (!params || !!params.sequence) {
+                tree.to(StateElements.SequenceVisual).update(StateTransforms.Representation.StructureRepresentation3D, old => ({ ...old, colorTheme }));
+            }
+            if (params && !!params.het) {
+                tree.to(StateElements.HetVisual).update(StateTransforms.Representation.StructureRepresentation3D, old => ({ ...old, colorTheme }));
+            }
 
-            await PluginCommands.State.Update.dispatch(this.plugin, { state, tree });
+            await PluginCommands.State.Update(this.plugin, { state, tree });
         }
     }
 

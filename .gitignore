@@ -1,5 +1,7 @@
 build/
 lib/
+FProject5.3/
+test-data/
 
 node_modules/
 debug.log

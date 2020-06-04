@@ -1,4 +1,4 @@
-import {Shape} from 'mol-model/shape';
+import {Shape} from '../../mol-model/shape';
 var aminoAcid = 0;
 var number_of_atoms = 0;
 var colorMode_r = '0';

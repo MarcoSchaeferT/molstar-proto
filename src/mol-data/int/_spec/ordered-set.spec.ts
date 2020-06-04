@@ -1,11 +1,12 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import OrderedSet from '../ordered-set'
-import Interval from '../interval'
+import OrderedSet from '../ordered-set';
+import Interval from '../interval';
+import SortedArray from '../sorted-array';
 
 describe('ordered set', () => {
     function ordSetToArray(set: OrderedSet) {
@@ -81,6 +82,13 @@ describe('ordered set', () => {
         expect(OrderedSet.isSubset(arr136, OrderedSet.ofSortedArray([12, 13, 16]))).toBe(false);
     });
 
+    it('isSubsetIS', () => {
+        expect(OrderedSet.isSubset(
+            Interval.ofRange(1271, 1295),
+            OrderedSet.ofSortedArray([1271, 1272, 1274, 1275, 1276, 1278, 1280, 1282, 1284, 1286, 1288, 1290, 1292, 1294])
+        )).toBe(true);
+    });
+
     it('access/membership', () => {
         expect(OrderedSet.has(empty, 10)).toBe(false);
         expect(OrderedSet.indexOf(empty, 10)).toBe(-1);
@@ -114,14 +122,14 @@ describe('ordered set', () => {
         expect(OrderedSet.findRange(arr136, 0, 4)).toEqual(iB(0, 2));
         expect(OrderedSet.findRange(arr136, 2, 4)).toEqual(iB(1, 2));
         expect(OrderedSet.findRange(arr136, 2, 7)).toEqual(iB(1, 3));
-    })
+    });
 
     it('intersectionSize', () => {
         expect(OrderedSet.intersectionSize(arr136, range1_4)).toEqual(2);
         expect(OrderedSet.intersectionSize(arr12369, range1_4)).toEqual(3);
         expect(OrderedSet.intersectionSize(OrderedSet.ofSortedArray([12, 13, 16]), range1_4)).toEqual(0);
         expect(OrderedSet.intersectionSize(OrderedSet.ofSortedArray([1, 2, 4]), range1_4)).toEqual(3);
-    })
+    });
 
     testEq('union ES', OrderedSet.union(empty, singleton10), [10]);
     testEq('union ER', OrderedSet.union(empty, range1_4), [1, 2, 3, 4]);
@@ -156,6 +164,15 @@ describe('ordered set', () => {
     testEq('intersect AA', OrderedSet.intersect(arr136, OrderedSet.ofSortedArray([2, 3, 4, 6, 7])), [3, 6]);
     it('intersect AA1', () => expect(OrderedSet.union(arr136, OrderedSet.ofSortedArray([1, 3, 6]))).toBe(arr136));
 
+    testEq('idxIntersect 1', OrderedSet.indexedIntersect(
+        OrderedSet.ofSortedArray([1, 2, 4]),
+        SortedArray.ofSortedArray([1, 2, 3, 4, 5, 6]),
+        SortedArray.ofSortedArray([2, 4, 5, 8])), [0, 2]);
+    testEq('idxIntersect 2', OrderedSet.indexedIntersect(
+        OrderedSet.ofSortedArray([0, 1]),
+        SortedArray.ofSortedArray([1, 2]),
+        SortedArray.ofSortedArray([1, 2])), [0, 1]);
+
     testEq('subtract ES', OrderedSet.subtract(empty, singleton10), []);
     testEq('subtract ER', OrderedSet.subtract(empty, range1_4), []);
     testEq('subtract EA', OrderedSet.subtract(empty, arr136), []);
@@ -184,5 +201,5 @@ describe('ordered set', () => {
         const int = OrderedSet.ofBounds(1, 3), set = OrderedSet.ofSortedArray([2, 3, 4]);
         expect(OrderedSet.forEach(int, (v, i, ctx) => ctx[i] = v, [] as number[])).toEqual([1, 2]);
         expect(OrderedSet.forEach(set, (v, i, ctx) => ctx[i] = v, [] as number[])).toEqual([2, 3, 4]);
-    })
+    });
 });

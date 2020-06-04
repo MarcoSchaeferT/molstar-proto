@@ -1,12 +1,14 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import * as ColumnHelpers from './column-helpers'
-import { Tensor as Tensors } from 'mol-math/linear-algebra'
+import * as ColumnHelpers from './column-helpers';
+import { Tensor as Tensors } from '../../mol-math/linear-algebra';
+import { Tokens } from '../../mol-io/reader/common/text/tokenizer';
+import { parseInt as fastParseInt, parseFloat as fastParseFloat } from '../../mol-io/reader/common/text/number-parser';
 
 interface Column<T> {
     readonly schema: Column.Schema,
@@ -35,7 +37,7 @@ namespace Column {
         export type Coordinate = { '@type': 'coord', T: number } & Base<'float'>
 
         export type Tensor = { '@type': 'tensor', T: Tensors.Data, space: Tensors.Space, baseType: Int | Float } & Base<'tensor'>
-        export type Aliased<T> = { '@type': 'aliased', T: T } & Base<'str' | 'int'>
+        export type Aliased<T> = { '@type': 'aliased', T: T } & Base<T extends string ? 'str' : 'int'>
         export type List<T extends number|string> = { '@type': 'list', T: T[], separator: string, itemParse: (x: string) => T } & Base<'list'>
 
         export const str: Str = { '@type': 'str', T: '', valueType: 'str' };
@@ -43,9 +45,9 @@ namespace Column {
         export const coord: Coordinate = { '@type': 'coord', T: 0, valueType: 'float' };
         export const float: Float = { '@type': 'float', T: 0, valueType: 'float' };
 
-        export function Str(defaultValue = ''): Str { return { '@type': 'str', T: defaultValue, valueType: 'str' } };
-        export function Int(defaultValue = 0): Int { return { '@type': 'int', T: defaultValue, valueType: 'int' } };
-        export function Float(defaultValue = 0): Float { return { '@type': 'float', T: defaultValue, valueType: 'float' } };
+        export function Str(defaultValue = ''): Str { return { '@type': 'str', T: defaultValue, valueType: 'str' }; };
+        export function Int(defaultValue = 0): Int { return { '@type': 'int', T: defaultValue, valueType: 'int' }; };
+        export function Float(defaultValue = 0): Float { return { '@type': 'float', T: defaultValue, valueType: 'float' }; };
         export function Tensor(space: Tensors.Space, baseType: Int | Float = float): Tensor { return { '@type': 'tensor', T: space.create(), space, valueType: 'tensor', baseType }; }
         export function Vector(dim: number, baseType: Int | Float = float): Tensor { return Tensor(Tensors.Vector(dim, baseType['@type'] === 'int' ? Int32Array : Float64Array), baseType); }
         export function Matrix(rows: number, cols: number, baseType: Int | Float = float): Tensor { return Tensor(Tensors.ColumnMajorMatrix(rows, cols, baseType['@type'] === 'int' ? Int32Array : Float64Array), baseType); }
@@ -55,7 +57,7 @@ namespace Column {
             return t as any as Aliased<T>;
         }
         export function List<T extends number|string>(separator: string, itemParse: (x: string) => T, defaultValue: T[] = []): List<T> {
-            return { '@type': 'list', T: defaultValue, separator, itemParse, valueType: 'list' }
+            return { '@type': 'list', T: defaultValue, separator, itemParse, valueType: 'list' };
         }
     }
 
@@ -71,6 +73,7 @@ namespace Column {
         rowCount: number,
         schema: T,
         valueKind?: (row: number) => ValueKind,
+        areValuesEqual?: (rowA: number, rowB: number) => boolean
     }
 
     export interface ArraySpec<T extends Schema> {
@@ -89,7 +92,13 @@ namespace Column {
         return !!v && !!(v as Column<any>).schema && !!(v as Column<any>).value;
     }
 
-    export const enum ValueKind { Present = 0, NotPresent = 1, Unknown = 2 }
+    export const enum ValueKind {
+        Present = 0,
+        /** Expressed in CIF as `.` */
+        NotPresent = 1,
+        /** Expressed in CIF as `?` */
+        Unknown = 2
+    }
 
     export function Undefined<T extends Schema>(rowCount: number, schema: T): Column<T['T']> {
         return constColumn(schema['T'], rowCount, schema, ValueKind.NotPresent);
@@ -126,6 +135,45 @@ namespace Column {
 
     export function ofStringArray(array: ArrayLike<string>) {
         return arrayColumn({ array, schema: Schema.str });
+    }
+
+    export function ofStringAliasArray<T extends string>(array: ArrayLike<T>) {
+        return arrayColumn<Schema.Aliased<T>>({ array, schema: Schema.Aliased(Schema.str) });
+    }
+
+    export function ofStringListArray<T extends string>(array: ArrayLike<T[]>, separator = ',') {
+        return arrayColumn<Schema.List<T>>({ array, schema: Schema.List<T>(separator, x => x as T) });
+    }
+
+    export function ofIntTokens(tokens: Tokens) {
+        const { count, data, indices } = tokens;
+        return lambdaColumn({
+            value: (row: number) => fastParseInt(data, indices[2 * row], indices[2 * row + 1]) || 0,
+            rowCount: count,
+            schema: Schema.int,
+        });
+    }
+
+    export function ofFloatTokens(tokens: Tokens) {
+        const { count, data, indices } = tokens;
+        return lambdaColumn({
+            value: (row: number) => fastParseFloat(data, indices[2 * row], indices[2 * row + 1]) || 0,
+            rowCount: count,
+            schema: Schema.float,
+        });
+    }
+
+    export function ofStringTokens(tokens: Tokens) {
+        const { count, data, indices } = tokens;
+        return lambdaColumn({
+            value: (row: number) => {
+                const ret = data.substring(indices[2 * row], indices[2 * row + 1]);
+                if (ret === '.' || ret === '?') return '';
+                return ret;
+            },
+            rowCount: count,
+            schema: Schema.str,
+        });
     }
 
     export function window<T>(column: Column<T>, start: number, end: number) {
@@ -166,13 +214,19 @@ namespace Column {
 
     export function copyToArray<T extends number>(c: Column<T>, array: { [k: number]: T, length: number }, offset = 0) {
         if (!c.isDefined) return;
-        const cArray = c.__array
+        const cArray = c.__array;
         if (cArray) {
             for (let i = 0, _i = cArray.length; i < _i; i++) array[offset + i] = cArray[i];
         } else {
             for (let i = 0, _i = c.rowCount; i < _i; i++) array[offset + i] = c.value(i);
         }
+    }
 
+    export function isIdentity<T extends number>(c: Column<T>) {
+        for (let i = 0, _i = c.rowCount; i < _i; i++) {
+            if (i !== c.value(i)) return false;
+        }
+        return true;
     }
 }
 
@@ -211,10 +265,10 @@ function constColumn<T extends Column.Schema>(v: T['T'], rowCount: number, schem
             return array;
         },
         areValuesEqual: (rowA, rowB) => true
-    }
+    };
 }
 
-function lambdaColumn<T extends Column.Schema>({ value, valueKind, rowCount, schema }: Column.LambdaSpec<T>): Column<T['T']> {
+function lambdaColumn<T extends Column.Schema>({ value, valueKind, areValuesEqual, rowCount, schema }: Column.LambdaSpec<T>): Column<T['T']> {
     return {
         schema: schema,
         __array: void 0,
@@ -227,8 +281,8 @@ function lambdaColumn<T extends Column.Schema>({ value, valueKind, rowCount, sch
             for (let i = 0, _i = array.length; i < _i; i++) array[i] = value(i + start);
             return array;
         },
-        areValuesEqual: (rowA, rowB) => value(rowA) === value(rowB)
-    }
+        areValuesEqual: areValuesEqual ? areValuesEqual : (rowA, rowB) => value(rowA) === value(rowB)
+    };
 }
 
 function arrayColumn<T extends Column.Schema>({ array, schema, valueKind }: Column.ArraySpec<T>): Column<T['T']> {
@@ -256,19 +310,19 @@ function arrayColumn<T extends Column.Schema>({ array, schema, valueKind }: Colu
                 return ret;
             }
             : isTyped
-            ? params => ColumnHelpers.typedArrayWindow(array, params) as any as ReadonlyArray<T>
-            : params => {
-                const { start, end } = ColumnHelpers.getArrayBounds(rowCount, params);
-                if (start === 0 && end === array.length) return array as ReadonlyArray<T['T']>;
-                const ret = new (params && typeof params.array !== 'undefined' ? params.array : (array as any).constructor)(end - start) as any;
-                for (let i = 0, _i = end - start; i < _i; i++) ret[i] = array[start + i];
-                return ret;
-            },
+                ? params => ColumnHelpers.typedArrayWindow(array, params) as any as ReadonlyArray<T>
+                : params => {
+                    const { start, end } = ColumnHelpers.getArrayBounds(rowCount, params);
+                    if (start === 0 && end === array.length) return array as ReadonlyArray<T['T']>;
+                    const ret = new (params && typeof params.array !== 'undefined' ? params.array : (array as any).constructor)(end - start) as any;
+                    for (let i = 0, _i = end - start; i < _i; i++) ret[i] = array[start + i];
+                    return ret;
+                },
         areValuesEqual: (rowA, rowB) => array[rowA] === array[rowB]
-    }
+    };
 }
 
-function windowColumn<T>(column: Column<T>, start: number, end: number) {
+function windowColumn<T>(column: Column<T>, start: number, end: number): Column<T> {
     if (!column.isDefined) return Column.Undefined(end - start, column.schema);
     if (start === 0 && end === column.rowCount) return column;
     if (!!column.__array && ColumnHelpers.isTypedArray(column.__array)) return windowTyped(column, start, end);
@@ -277,7 +331,8 @@ function windowColumn<T>(column: Column<T>, start: number, end: number) {
 
 function windowTyped<T>(c: Column<T>, start: number, end: number): Column<T> {
     const array = ColumnHelpers.typedArrayWindow(c.__array, { start, end });
-    return arrayColumn({ array, schema: c.schema, valueKind: c.valueKind }) as any;
+    const vk = c.valueKind;
+    return arrayColumn({ array, schema: c.schema, valueKind: row => vk(start + row) }) as any;
 }
 
 function windowFull<T>(c: Column<T>, start: number, end: number): Column<T> {
@@ -309,9 +364,9 @@ function isIdentity(map: ArrayLike<number>, rowCount: number) {
 }
 
 function columnView<T>(c: Column<T>, map: ArrayLike<number>, checkIdentity: boolean): Column<T> {
-    if (!c.isDefined) return c;
+    if (!c.isDefined || c.rowCount === 0) return c;
     if (checkIdentity && isIdentity(map, c.rowCount)) return c;
-    if (!!c.__array) return arrayView(c, map);
+    if (!!c.__array && typeof c.value(0) === typeof c.__array[0]) return arrayView(c, map);
     return viewFull(c, map);
 }
 
@@ -319,7 +374,8 @@ function arrayView<T>(c: Column<T>, map: ArrayLike<number>): Column<T> {
     const array = c.__array!;
     const ret = new (array as any).constructor(map.length);
     for (let i = 0, _i = map.length; i < _i; i++) ret[i] = array[map[i]];
-    return arrayColumn({ array: ret, schema: c.schema, valueKind: c.valueKind });
+    const vk = c.valueKind;
+    return arrayColumn({ array: ret, schema: c.schema, valueKind: row => vk(map[row]) });
 }
 
 function viewFull<T>(c: Column<T>, map: ArrayLike<number>): Column<T> {

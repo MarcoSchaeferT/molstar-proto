@@ -6,15 +6,15 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as Format from './format'
-import * as Data from './data-model'
-import * as File from '../common/file'
-import * as Downsampling from './downsampling'
-import * as Writer from './writer'
-import * as DataFormat from '../common/data-format'
-import { FileHandle } from 'mol-io/common/file-handle';
-import { getElementByteSize, createTypedArray, TypedArrayValueType } from 'mol-io/common/typed-array';
-import { SimpleBuffer } from 'mol-io/common/simple-buffer';
+import * as Format from './format';
+import * as Data from './data-model';
+import * as File from '../common/file';
+import * as Downsampling from './downsampling';
+import * as Writer from './writer';
+import * as DataFormat from '../common/data-format';
+import { FileHandle } from '../../../mol-io/common/file-handle';
+import { getElementByteSize, createTypedArray, TypedArrayValueType } from '../../../mol-io/common/typed-array';
+import { SimpleBuffer } from '../../../mol-io/common/simple-buffer';
 
 export async function createContext(filename: string, channels: Format.Context[], blockSize: number, isPeriodic: boolean): Promise<Data.Context> {
     const { extent, valueType, grid, origin } = channels[0].data.header;
@@ -32,7 +32,7 @@ export async function createContext(filename: string, channels: Format.Context[]
     }
 
     const ctx: Data.Context = {
-        file: FileHandle.fromDescriptor(await File.createFile(filename)),
+        file: FileHandle.fromDescriptor(await File.createFile(filename), filename),
         isPeriodic,
         channels,
         valueType,
@@ -113,7 +113,7 @@ function createDownsamplingBuffer(valueType: TypedArrayValueType, sourceSampleCo
             downsampleHK: createTypedArray(valueType, 5 * targetSampleCount[0] * targetSampleCount[1]),
             slicesWritten: 0,
             startSliceIndex: 0
-        }
+        };
     }
     return ret;
 }
@@ -127,7 +127,7 @@ function createSampling(index: number, valueType: TypedArrayValueType, numChanne
             sqSum: 0.0,
             max: Number.NEGATIVE_INFINITY,
             min: Number.POSITIVE_INFINITY
-        }
+        };
     }
     return {
         rate: 1 << index,
@@ -139,7 +139,7 @@ function createSampling(index: number, valueType: TypedArrayValueType, numChanne
         byteOffset: 0,
         byteSize: numChannels * sampleCount[0] * sampleCount[1] * sampleCount[2] * getElementByteSize(valueType),
         writeByteOffset: 0
-    }
+    };
 }
 
 function copyLayer(ctx: Data.Context, sliceIndex: number) {

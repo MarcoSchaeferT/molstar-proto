@@ -6,10 +6,10 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as fs from 'fs'
-import * as path from 'path'
-import { FileHandle } from 'mol-io/common/file-handle';
-import { SimpleBuffer } from 'mol-io/common/simple-buffer';
+import * as fs from 'fs';
+import * as path from 'path';
+import { FileHandle } from '../../../mol-io/common/file-handle';
+import { SimpleBuffer } from '../../../mol-io/common/simple-buffer';
 
 export async function openRead(filename: string) {
     return new Promise<number>((res, rej) => {
@@ -24,7 +24,7 @@ export async function openRead(filename: string) {
             } catch (e) {
                 fs.closeSync(file);
             }
-        })
+        });
     });
 }
 
@@ -34,8 +34,9 @@ function makeDir(path: string, root?: string): boolean {
 
     root = (root || '') + dir + '/';
 
-    try { fs.mkdirSync(root); }
-    catch (e) {
+    try {
+        fs.mkdirSync(root);
+    } catch (e) {
         if (!fs.statSync(root).isDirectory()) throw new Error(e);
     }
 
@@ -53,7 +54,7 @@ export function createFile(filename: string) {
         fs.open(filename, 'w', (err, file) => {
             if (err) rej(err);
             else res(file);
-        })
+        });
     });
 }
 

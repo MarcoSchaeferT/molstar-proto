@@ -1,14 +1,14 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * Code-generated 'CCD' schema file. Dictionary versions: mmCIF 5.305, IHM 0.139, CARB draft.
+ * Code-generated 'CCD' schema file. Dictionary versions: mmCIF 5.326, IHM 1.09, CARB draft.
  *
- * @author mol-star package (src/apps/schema-generator/generate)
+ * @author molstar/ciftools package
  */
 
-import { Database, Column } from 'mol-data/db'
+import { Database, Column } from '../../../../mol-data/db';
 
-import Schema = Column.Schema
+import Schema = Column.Schema;
 
 const str = Schema.str;
 const float = Schema.float;
@@ -103,7 +103,7 @@ export const CCD_Schema = {
          * linking monomers, monomers with some type of N-terminal (or 5')
          * cap and monomers with some type of C-terminal (or 3') cap.
          */
-        type: Aliased<'D-peptide linking' | 'L-peptide linking' | 'D-peptide NH3 amino terminus' | 'L-peptide NH3 amino terminus' | 'D-peptide COOH carboxy terminus' | 'L-peptide COOH carboxy terminus' | 'DNA linking' | 'RNA linking' | 'L-RNA linking' | 'L-DNA linking' | 'DNA OH 5 prime terminus' | 'RNA OH 5 prime terminus' | 'DNA OH 3 prime terminus' | 'RNA OH 3 prime terminus' | 'D-saccharide 1,4 and 1,4 linking' | 'L-saccharide 1,4 and 1,4 linking' | 'D-saccharide 1,4 and 1,6 linking' | 'L-saccharide 1,4 and 1,6 linking' | 'L-saccharide' | 'D-saccharide' | 'saccharide' | 'non-polymer' | 'peptide linking' | 'peptide-like' | 'L-gamma-peptide, C-delta linking' | 'D-gamma-peptide, C-delta linking' | 'L-beta-peptide, C-gamma linking' | 'D-beta-peptide, C-gamma linking' | 'other'>(str),
+        type: Aliased<'D-peptide linking' | 'L-peptide linking' | 'D-peptide NH3 amino terminus' | 'L-peptide NH3 amino terminus' | 'D-peptide COOH carboxy terminus' | 'L-peptide COOH carboxy terminus' | 'DNA linking' | 'RNA linking' | 'L-RNA linking' | 'L-DNA linking' | 'DNA OH 5 prime terminus' | 'RNA OH 5 prime terminus' | 'DNA OH 3 prime terminus' | 'RNA OH 3 prime terminus' | 'D-saccharide 1,4 and 1,4 linking' | 'L-saccharide 1,4 and 1,4 linking' | 'D-saccharide 1,4 and 1,6 linking' | 'L-saccharide 1,4 and 1,6 linking' | 'D-saccharide, beta linking' | 'D-saccharide, alpha linking' | 'L-saccharide, beta linking' | 'L-saccharide, alpha linking' | 'L-saccharide' | 'D-saccharide' | 'saccharide' | 'non-polymer' | 'peptide linking' | 'peptide-like' | 'L-gamma-peptide, C-delta linking' | 'D-gamma-peptide, C-delta linking' | 'L-beta-peptide, C-gamma linking' | 'D-beta-peptide, C-gamma linking' | 'other'>(str),
         /**
          * Synonym list for the component.
          */
@@ -168,10 +168,14 @@ export const CCD_Schema = {
          */
         pdbx_modified_date: str,
         /**
+         * This data item holds the current release status for the component.
+         */
+        pdbx_release_status: Aliased<'REL' | 'HOLD' | 'HPUB' | 'OBS' | 'DEL' | 'REF_ONLY'>(str),
+        /**
          * This data item identifies the deposition site that processed
          * this chemical component defintion.
          */
-        pdbx_processing_site: Aliased<'PDBE' | 'EBI' | 'PDBJ' | 'RCSB'>(str),
+        pdbx_processing_site: Aliased<'PDBE' | 'EBI' | 'PDBJ' | 'PDBC' | 'RCSB'>(str),
     },
     /**
      * Data items in the CHEM_COMP_ATOM category record details about
@@ -378,7 +382,7 @@ export const CCD_Schema = {
         /**
          * This data item contains the identifier type.
          */
-        type: Aliased<'COMMON NAME' | 'SYSTEMATIC NAME' | 'CAS REGISTRY NUMBER' | 'PUBCHEM Identifier' | 'MDL Identifier' | 'SYNONYM' | 'CONDENSED IUPAC CARB SYMBOL' | 'IUPAC CARB SYMBOL' | 'SNFG CARB SYMBOL'>(str),
+        type: Aliased<'COMMON NAME' | 'SYSTEMATIC NAME' | 'CAS REGISTRY NUMBER' | 'PUBCHEM Identifier' | 'MDL Identifier' | 'SYNONYM' | 'CONDENSED IUPAC CARB SYMBOL' | 'IUPAC CARB SYMBOL' | 'SNFG CARB SYMBOL' | 'CONDENSED IUPAC CARBOHYDRATE SYMBOL' | 'IUPAC CARBOHYDRATE SYMBOL' | 'SNFG CARBOHYDRATE SYMBOL'>(str),
         /**
          * This data item contains the name of the program
          * or library used to compute the identifier.
@@ -390,7 +394,7 @@ export const CCD_Schema = {
          */
         program_version: str,
     },
-}
+};
 
 export type CCD_Schema = typeof CCD_Schema;
-export interface CCD_Database extends Database<CCD_Schema> {}
+export interface CCD_Database extends Database<CCD_Schema> {};

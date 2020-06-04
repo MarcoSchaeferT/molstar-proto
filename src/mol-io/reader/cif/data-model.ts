@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Column, ColumnHelpers } from 'mol-data/db'
-import { Tensor } from 'mol-math/linear-algebra'
+import { Column, ColumnHelpers, Table } from '../../../mol-data/db';
+import { Tensor } from '../../../mol-math/linear-algebra';
 import { getNumberType, NumberType, parseInt as fastParseInt, parseFloat as fastParseFloat } from '../common/text/number-parser';
 import { Encoding } from '../../common/binary-cif';
 import { Tokens } from '../common/text/tokenizer';
@@ -23,23 +23,31 @@ export function CifFile(blocks: ArrayLike<CifBlock>, name?: string): CifFile {
 
 export interface CifFrame {
     readonly header: string,
-    // Category names stored separately so that the ordering can be preserved.
+    /** Category names, stored separately so that the ordering can be preserved. */
     readonly categoryNames: ReadonlyArray<string>,
     readonly categories: CifCategories
 }
 
 export interface CifBlock extends CifFrame {
     readonly saveFrames: CifFrame[]
+    getField(name: string): CifField | undefined
 }
 
 export function CifBlock(categoryNames: string[], categories: CifCategories, header: string, saveFrames: CifFrame[] = []): CifBlock {
-    return { categoryNames, header, categories, saveFrames };
+    return {
+        categoryNames, header, categories, saveFrames,
+        getField(name: string) {
+            const [ category, field ] = name.split('.');
+            return categories[category].getField(field || '');
+        }
+    };
 }
 
-export function CifSafeFrame(categoryNames: string[], categories: CifCategories, header: string): CifFrame {
+export function CifSaveFrame(categoryNames: string[], categories: CifCategories, header: string): CifFrame {
     return { categoryNames, header, categories };
 }
 
+export type CifAliases = { readonly [name: string]: string[] }
 export type CifCategories = { readonly [name: string]: CifCategory }
 
 export interface CifCategory {
@@ -69,6 +77,14 @@ export namespace CifCategory {
             fieldNames,
             getField(name) { return fields[name]; }
         };
+    }
+
+    export function ofTable(name: string, table: Table<any>) {
+        const fields: { [name: string]: CifField | undefined } = {};
+        for (const name of table._columns) {
+            fields[name] = CifField.ofColumn(table[name]);
+        }
+        return ofFields(name, fields);
     }
 }
 
@@ -101,7 +117,7 @@ export namespace CifField {
         return ofStrings([value]);
     }
 
-    export function ofStrings(values: string[]): CifField {
+    export function ofStrings(values: ArrayLike<string>): CifField {
         const rowCount = values.length;
         const str: CifField['str'] = row => { const ret = values[row]; if (!ret || ret === '.' || ret === '?') return ''; return ret; };
         const int: CifField['int'] = row => { const v = values[row]; return fastParseInt(v, 0, v.length) || 0; };
@@ -126,10 +142,10 @@ export namespace CifField {
             float,
             valueKind,
             areValuesEqual: (rowA, rowB) => values[rowA] === values[rowB],
-            toStringArray: params => ColumnHelpers.createAndFillArray(rowCount, str, params),
+            toStringArray: params => params ? ColumnHelpers.createAndFillArray(rowCount, str, params) : values as string[],
             toIntArray: params => ColumnHelpers.createAndFillArray(rowCount, int, params),
             toFloatArray: params => ColumnHelpers.createAndFillArray(rowCount, float, params)
-        }
+        };
     }
 
     export function ofNumbers(values: ArrayLike<number>): CifField {
@@ -137,6 +153,14 @@ export namespace CifField {
         const str: CifField['str'] = row => { return '' + values[row]; };
         const float: CifField['float'] = row => values[row];
         const valueKind: CifField['valueKind'] = row => Column.ValueKind.Present;
+
+        const toFloatArray = (params: Column.ToArrayParams<number>) => {
+            if (!params || params.array && values instanceof params.array) {
+                return values as number[];
+            } else {
+                return ColumnHelpers.createAndFillArray(rowCount, float, params);
+            }
+        };
 
         return {
             __array: void 0,
@@ -149,9 +173,9 @@ export namespace CifField {
             valueKind,
             areValuesEqual: (rowA, rowB) => values[rowA] === values[rowB],
             toStringArray: params => ColumnHelpers.createAndFillArray(rowCount, str, params),
-            toIntArray: params => ColumnHelpers.createAndFillArray(rowCount, float, params),
-            toFloatArray: params => ColumnHelpers.createAndFillArray(rowCount, float, params)
-        }
+            toIntArray: toFloatArray,
+            toFloatArray
+        };
     }
 
     export function ofTokens(tokens: Tokens): CifField {
@@ -194,36 +218,42 @@ export namespace CifField {
             toStringArray: params => ColumnHelpers.createAndFillArray(rowCount, str, params),
             toIntArray: params => ColumnHelpers.createAndFillArray(rowCount, int, params),
             toFloatArray: params => ColumnHelpers.createAndFillArray(rowCount, float, params)
-        }
+        };
     }
 
     export function ofColumn(column: Column<any>): CifField {
-        const { rowCount, valueKind, areValuesEqual } = column;
+        const { rowCount, valueKind, areValuesEqual, isDefined } = column;
 
-        let str: CifField['str']
-        let int: CifField['int']
-        let float: CifField['float']
+        let str: CifField['str'];
+        let int: CifField['int'];
+        let float: CifField['float'];
 
         switch (column.schema.valueType) {
             case 'float':
             case 'int':
                 str = row => { return '' + column.value(row); };
-                int = row => column.value(row);
-                float = row => column.value(row);
-                break
+                int = column.value;
+                float = column.value;
+                break;
             case 'str':
-                str = row => column.value(row);
+                str = column.value;
                 int = row => { const v = column.value(row); return fastParseInt(v, 0, v.length) || 0; };
                 float = row => { const v = column.value(row); return fastParseFloat(v, 0, v.length) || 0; };
-                break
+                break;
+            case 'list':
+                const { separator } = column.schema;
+                str = row => column.value(row).join(separator);
+                int = row => NaN;
+                float = row => NaN;
+                break;
             default:
-                throw new Error('unsupported')
+                throw new Error(`unsupported valueType '${column.schema.valueType}'`);
         }
 
         return {
             __array: void 0,
             binaryEncoding: void 0,
-            isDefined: true,
+            isDefined,
             rowCount,
             str,
             int,
@@ -233,25 +263,44 @@ export namespace CifField {
             toStringArray: params => ColumnHelpers.createAndFillArray(rowCount, str, params),
             toIntArray: params => ColumnHelpers.createAndFillArray(rowCount, int, params),
             toFloatArray: params => ColumnHelpers.createAndFillArray(rowCount, float, params)
-        }
+        };
     }
 }
 
-export function getTensor(category: CifCategory, field: string, space: Tensor.Space, row: number, zeroIndexed: boolean): Tensor.Data {
-    const ret = space.create();
+export function tensorFieldNameGetter(field: string, rank: number, zeroIndexed: boolean, namingVariant: 'brackets' | 'underscore') {
     const offset = zeroIndexed ? 0 : 1;
+    switch (rank) {
+        case 1:
+            return namingVariant === 'brackets'
+                ? (i: number) => `${field}[${i + offset}]`
+                : (i: number) => `${field}_${i + offset}`;
+        case 2:
+            return namingVariant === 'brackets'
+                ? (i: number, j: number) => `${field}[${i + offset}][${j + offset}]`
+                : (i: number, j: number) => `${field}_${i + offset}${j + offset}`;
+        case 3:
+            return namingVariant === 'brackets'
+                ? (i: number, j: number, k: number) => `${field}[${i + offset}][${j + offset}][${k + offset}]`
+                : (i: number, j: number, k: number) => `${field}_${i + offset}${j + offset}${k + offset}`;
+        default:
+            throw new Error('Tensors with rank > 3 or rank 0 are currently not supported.');
+    }
+}
+
+export function getTensor(category: CifCategory, space: Tensor.Space, row: number, getName: (...args: number[]) => string): Tensor.Data {
+    const ret = space.create();
 
     if (space.rank === 1) {
         const rows = space.dimensions[0];
         for (let i = 0; i < rows; i++) {
-            const f = category.getField(`${field}[${i + offset}]`);
+            const f = category.getField(getName(i));
             space.set(ret, i, !!f ? f.float(row) : 0.0);
         }
     } else if (space.rank === 2) {
         const rows = space.dimensions[0], cols = space.dimensions[1];
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < cols; j++) {
-                const f = category.getField(`${field}[${i + offset}][${j + offset}]`);
+                const f = category.getField(getName(i, j));
                 space.set(ret, i, j, !!f ? f.float(row) : 0.0);
             }
         }
@@ -260,17 +309,19 @@ export function getTensor(category: CifCategory, field: string, space: Tensor.Sp
         for (let i = 0; i < d0; i++) {
             for (let j = 0; j < d1; j++) {
                 for (let k = 0; k < d2; k++) {
-                    const f = category.getField(`${field}[${i + offset}][${j + offset}][${k + offset}]`);
+                    const f = category.getField(getName(i, j, k));
                     space.set(ret, i, j, k, !!f ? f.float(row) : 0.0);
                 }
             }
         }
-    } else throw new Error('Tensors with rank > 3 or rank 0 are currently not supported.');
+    } else {
+        throw new Error('Tensors with rank > 3 or rank 0 are currently not supported.');
+    }
     return ret;
 }
 
 export function getCifFieldType(field: CifField): Column.Schema.Int | Column.Schema.Float | Column.Schema.Str {
-    let floatCount = 0, hasString = false, undefinedCount = 0;
+    let floatCount = 0, hasStringOrScientific = false, undefinedCount = 0;
     for (let i = 0, _i = field.rowCount; i < _i; i++) {
         const k = field.valueKind(i);
         if (k !== Column.ValueKind.Present) {
@@ -280,10 +331,11 @@ export function getCifFieldType(field: CifField): Column.Schema.Int | Column.Sch
         const type = getNumberType(field.str(i));
         if (type === NumberType.Int) continue;
         else if (type === NumberType.Float) floatCount++;
-        else { hasString = true; break; }
+        else { hasStringOrScientific = true; break; }
     }
 
-    if (hasString || undefinedCount === field.rowCount) return Column.Schema.str;
+    // numbers in scientific notation and plain text are not distinguishable
+    if (hasStringOrScientific || undefinedCount === field.rowCount) return Column.Schema.str;
     if (floatCount > 0) return Column.Schema.float;
     return Column.Schema.int;
 }

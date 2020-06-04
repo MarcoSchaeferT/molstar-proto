@@ -1,17 +1,21 @@
-import { Color, ColorMap } from 'mol-util/color';
-
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
+import { Color, ColorMap } from '../../../../mol-util/color';
+
 // follows community standard from https://www.ncbi.nlm.nih.gov/glycans/snfg.html
 
-export const enum SaccharideShapes {
+export const enum SaccharideShape {
+    // standard shapes
     FilledSphere, FilledCube, CrossedCube, DividedDiamond, FilledCone, DevidedCone,
-    FlatBox, FilledStar, FilledDiamond, FlatDiamond, FlatHexagon, Pentagon
+    FlatBox, FilledStar, FilledDiamond, FlatDiamond, FlatHexagon, Pentagon,
+
+    // generic shapes for rings with 4, 5, 6, or 7 members
+    DiamondPrism, PentagonalPrism, HexagonalPrism, HeptagonalPrism
 }
 
 export const SaccharideColors = ColorMap({
@@ -26,7 +30,7 @@ export const SaccharideColors = ColorMap({
     Red: 0xed1c24,
 
     Secondary: 0xf1ece1
-})
+});
 
 export const enum SaccharideType {
     Hexose, HexNAc, Hexosamine, Hexuronate, Deoxyhexose, DeoxyhexNAc, DiDeoxyhexose,
@@ -46,29 +50,37 @@ const SaccharideTypeNameMap = {
     [SaccharideType.DiDeoxynonulosonate]: 'Di-deoxynonulosonate',
     [SaccharideType.Unknown]: 'Unknown',
     [SaccharideType.Assigned]: 'Assigned',
-}
+};
 
 export function getSaccharideName(type: SaccharideType) {
-    return SaccharideTypeNameMap[type]
+    return SaccharideTypeNameMap[type];
 }
 
 const SaccharideTypeShapeMap = {
-    [SaccharideType.Hexose]: SaccharideShapes.FilledSphere,
-    [SaccharideType.HexNAc]: SaccharideShapes.FilledCube,
-    [SaccharideType.Hexosamine]: SaccharideShapes.CrossedCube,
-    [SaccharideType.Hexuronate]: SaccharideShapes.DividedDiamond,
-    [SaccharideType.Deoxyhexose]: SaccharideShapes.FilledCone,
-    [SaccharideType.DeoxyhexNAc]: SaccharideShapes.DevidedCone,
-    [SaccharideType.DiDeoxyhexose]: SaccharideShapes.FlatBox,
-    [SaccharideType.Pentose]: SaccharideShapes.FilledStar,
-    [SaccharideType.Deoxynonulosonate]: SaccharideShapes.FilledDiamond,
-    [SaccharideType.DiDeoxynonulosonate]: SaccharideShapes.FlatDiamond,
-    [SaccharideType.Unknown]: SaccharideShapes.FlatHexagon,
-    [SaccharideType.Assigned]: SaccharideShapes.Pentagon,
-}
+    [SaccharideType.Hexose]: SaccharideShape.FilledSphere,
+    [SaccharideType.HexNAc]: SaccharideShape.FilledCube,
+    [SaccharideType.Hexosamine]: SaccharideShape.CrossedCube,
+    [SaccharideType.Hexuronate]: SaccharideShape.DividedDiamond,
+    [SaccharideType.Deoxyhexose]: SaccharideShape.FilledCone,
+    [SaccharideType.DeoxyhexNAc]: SaccharideShape.DevidedCone,
+    [SaccharideType.DiDeoxyhexose]: SaccharideShape.FlatBox,
+    [SaccharideType.Pentose]: SaccharideShape.FilledStar,
+    [SaccharideType.Deoxynonulosonate]: SaccharideShape.FilledDiamond,
+    [SaccharideType.DiDeoxynonulosonate]: SaccharideShape.FlatDiamond,
+    [SaccharideType.Unknown]: SaccharideShape.FlatHexagon,
+    [SaccharideType.Assigned]: SaccharideShape.Pentagon,
+};
 
-export function getSaccharideShape(type: SaccharideType) {
-    return SaccharideTypeShapeMap[type]
+export function getSaccharideShape(type: SaccharideType, ringMemberCount: number): SaccharideShape {
+    if (type === SaccharideType.Unknown) {
+        if (ringMemberCount === 4) return SaccharideShape.DiamondPrism;
+        else if (ringMemberCount === 5) return SaccharideShape.PentagonalPrism;
+        else if (ringMemberCount === 6) return SaccharideShape.HexagonalPrism;
+        else if (ringMemberCount === 7) return SaccharideShape.HeptagonalPrism;
+        else return SaccharideShape.FlatHexagon;
+    } else {
+        return SaccharideTypeShapeMap[type];
+    }
 }
 
 export type SaccharideComponent = {
@@ -83,7 +95,7 @@ export const UnknownSaccharideComponent: SaccharideComponent = {
     name: 'Unknown',
     color: SaccharideColors.Secondary,
     type: SaccharideType.Unknown
-}
+};
 
 const Monosaccharides: SaccharideComponent[] = [
     { abbr: 'Glc', name: 'Glucose', color: SaccharideColors.Blue, type: SaccharideType.Hexose },
@@ -159,10 +171,10 @@ const Monosaccharides: SaccharideComponent[] = [
     { abbr: '4eLeg', name: '4-Epilegionaminic Acid', color: SaccharideColors.LightBlue, type: SaccharideType.DiDeoxynonulosonate },
 
     { abbr: 'Bac', name: 'Bacillosamine', color: SaccharideColors.Blue, type: SaccharideType.Unknown },
-    { abbr: 'LDManHep', name: 'L-Glycero-D-Manno Heptose', color: SaccharideColors.Green, type: SaccharideType.Unknown },
+    { abbr: 'LDmanHep', name: 'L-Glycero-D-Manno Heptose', color: SaccharideColors.Green, type: SaccharideType.Unknown },
     { abbr: 'Kdo', name: 'Keto-Deoxy Octulonic Acid', color: SaccharideColors.Yellow, type: SaccharideType.Unknown },
     { abbr: 'Dha', name: '3-Deoxy Lyxo-Heptulosaric Acid', color: SaccharideColors.Orange, type: SaccharideType.Unknown },
-    { abbr: 'DDManHep', name: 'D-Glycero-D-Manno-Heptose', color: SaccharideColors.Pink, type: SaccharideType.Unknown },
+    { abbr: 'DDmanHep', name: 'D-Glycero-D-Manno-Heptose', color: SaccharideColors.Pink, type: SaccharideType.Unknown },
     { abbr: 'MurNAc', name: 'N-Acetyl Muramic Acid', color: SaccharideColors.Purple, type: SaccharideType.Unknown },
     { abbr: 'MurNGc', name: 'N-Glycolyl Muramic Acid', color: SaccharideColors.LightBlue, type: SaccharideType.Unknown },
     { abbr: 'Mur', name: 'Muramic Acid', color: SaccharideColors.Brown, type: SaccharideType.Unknown },
@@ -172,16 +184,16 @@ const Monosaccharides: SaccharideComponent[] = [
     { abbr: 'Tag', name: 'Tagatose', color: SaccharideColors.Yellow, type: SaccharideType.Assigned },
     { abbr: 'Sor', name: 'Sorbose', color: SaccharideColors.Orange, type: SaccharideType.Assigned },
     { abbr: 'Psi', name: 'Psicose', color: SaccharideColors.Pink, type: SaccharideType.Assigned },
-]
+];
 
 export const SaccharidesSnfgMap = (function () {
-    const map = new Map<string, SaccharideComponent>()
+    const map = new Map<string, SaccharideComponent>();
     for (let i = 0, il = Monosaccharides.length; i < il; ++i) {
-        const saccharide = Monosaccharides[i]
-        map.set(saccharide.abbr, saccharide)
+        const saccharide = Monosaccharides[i];
+        map.set(saccharide.abbr, saccharide);
     }
-    return map
-})()
+    return map;
+})();
 
 export const MonosaccharidesColorTable: [string, Color][] = [
     ['Glc-family', SaccharideColors.Blue],
@@ -194,39 +206,33 @@ export const MonosaccharidesColorTable: [string, Color][] = [
     ['Ido-family', SaccharideColors.Brown],
     ['Fuc-family', SaccharideColors.Red],
     ['Generic/Unknown/Secondary', SaccharideColors.Secondary],
-]
+];
 
 const CommonSaccharideNames: { [k: string]: string[] } = {
     // Hexose
     Glc: [
-        'GLC', 'BGC',
-        'BOG', // via GlyFinder
-        'TRE', // via GlyFinder, di-saccharide but homomer
-        'MLR', // via GlyFinder, tri-saccharide but homomer
+        'GLC', 'BGC', 'Z8T',
+        'TRE', // di-saccharide but homomer
+        'MLR', // tri-saccharide but homomer
     ],
     Man: ['MAN', 'BMA'],
-    Gal: [
-        'GAL', 'GLA',
-        'GXL' // via PubChem
-    ],
-    Gul: ['GUP', 'GL0'],
-    Alt: ['ALT'],
-    All: ['ALL', 'AFD'],
-    Tal: ['TAL'],
-    Ido: ['4N2'],
+    Gal: ['GLA', 'GAL', 'GZL', 'GXL', 'GIV'],
+    Gul: ['4GL', 'GL0', 'GUP', 'Z8H'],
+    Alt: ['Z6H', '3MK', 'SHD'],
+    All: ['AFD', 'ALL', 'WOO', 'Z2D'],
+    Tal: ['ZEE', 'A5C', 'SDY'],
+    Ido: ['ZCD', 'Z0F', '4N2'],
     // HexNAc
-    GlcNAc: ['NAG', 'NDG'],
-    ManNAc: ['NGA', 'A2G'],
-    GulNAc: [],
+    GlcNAc: ['NDG', 'NAG', 'NGZ'],
+    ManNAc: ['BM3', 'BM7'],
+    GalNAc: ['A2G', 'NGA', 'YYQ'],
+    GulNAc: ['LXB'],
     AltNAc: [],
     AllNAc: ['NAA'],
     TalNAc: [],
-    IdoNAc: ['HSQ'],
+    IdoNAc: ['LXZ', 'HSQ'],
     // Hexosamine
-    GlcN: [
-        'GCS', 'PA1',
-        'IDU', 'SGN', 'SUS', // via GlyFinder
-    ],
+    GlcN: ['PA1', 'GCS'],
     ManN: ['95Z'],
     GalN: ['X6X', '1GN'],
     GulN: [],
@@ -237,87 +243,87 @@ const CommonSaccharideNames: { [k: string]: string[] } = {
     // Hexuronate
     GlcA: ['GCU', 'BDP'],
     ManA: ['MAV', 'BEM'],
-    GalA: ['ADA', 'GTR'],
+    GalA: ['ADA', 'GTR', 'GTK'],
     GulA: ['LGU'],
     AltA: [],
     AllA: [],
-    TalA: ['X0X', 'X1X'],
-    IdoA: [
-        'IDR',
-        'IDS', // via GlyFinder
-    ],
+    TalA: ['X1X', 'X0X'],
+    IdoA: ['IDR'],
     // Deoxyhexose
-    Qui: ['G6D'],
-    Rha: ['RAM', 'RM4'],
-    '6dGul': [],
+    Qui: ['G6D', 'YYK'],
+    Rha: ['RAM', 'RM4', 'XXR'],
+    '6dGul': ['66O'],
     '6dAlt': [],
     '6dTal': [],
-    Fuc: ['FUC', 'FUL'],
+    Fuc: ['FUC', 'FUL', 'FCA', 'FCB', 'GYE'],
     // DeoxyhexNAc
-    QuiNAc: [],
+    QuiNAc: ['Z9W'],
     RhaNAc: [],
     '6dAltNAc': [],
     '6dTalNAc': [],
-    FucNAc: [],
+    FucNAc: ['49T'],
     // Di-deoxyhexose
-    Oli: ['DDA'],
+    Oli: ['DDA', 'RAE', 'Z5J'],
     Tyv: ['TYV'],
     Abe: ['ABE'],
     Par: ['PZU'],
-    Dig: [],
+    Dig: ['Z3U'],
     Col: [],
     // Pentose
-    Ara: ['ARA', 'ARB'],
-    Lyx: ['LDY'],
-    Xyl: ['XYS', 'XYP'],
-    Rib: ['RIP', '0MK'],
+    Ara: ['64K', 'ARA', 'ARB', 'AHR', 'FUB', 'BXY', 'BXX', 'SEJ'],
+    Lyx: ['LDY', 'Z4W'],
+    Xyl: ['XYS', 'XYP', 'XYZ', 'HSY', 'LXC'],
+    Rib: ['YYM', 'RIP', 'RIB', 'BDR', '0MK', 'Z6J', '32O'],
     // Deoxynonulosonate
-    Kdn: ['KDN', 'KDM'],
+    Kdn: ['KDM', 'KDN'],
     Neu5Ac: ['SIA', 'SLB'],
     Neu5Gc: ['NGC', 'NGE'],
     Neu: [],
     Sia: [],
     // Di-deoxynonulosonate
-    Pse: ['6PZ'],
+    Pse: [],
     Leg: [],
     Aci: [],
     '4eLeg': [],
     // Unknown
-    Bac: ['B6D'],
-    LDManHep: ['GMH'],
+    Bac: [],
+    LDmanHep: ['GMH'],
     Kdo: ['KDO'],
     Dha: [],
-    DDManHep: [],
-    MurNAc: ['AMU'],
+    DDmanHep: ['289'],
+    MurNAc: ['MUB', 'AMU'],
     MurNGc: [],
-    Mur: ['MUR'],
+    Mur: ['1S4', 'MUR'],
     // Assigned
     Api: ['XXM'],
-    Fru: ['BDF'],
+    Fru: ['BDF', 'Z9N', 'FRU', 'LFR'],
     Tag: ['T6T'],
-    Sor: ['SOE'],
-    Psi: [],
-}
+    Sor: ['SOE', 'UEA'],
+    Psi: ['PSV', 'SF6', 'SF9', 'TTV'],
+};
 
 const UnknownSaccharideNames = [
     'NGZ', // via CCD
-]
+    'LAT', // BETA-LACTOSE, Gal-Glc di-saccharide via GlyFinder
+
+    'PUF', 'GDA', '9WJ', // via updated CCD
+];
 
 export const SaccharideCompIdMap = (function () {
-    const map = new Map<string, SaccharideComponent>()
+    const map = new Map<string, SaccharideComponent>();
     for (let i = 0, il = Monosaccharides.length; i < il; ++i) {
-        const saccharide = Monosaccharides[i]
-        const names = CommonSaccharideNames[saccharide.abbr]
+        const saccharide = Monosaccharides[i];
+        const names = CommonSaccharideNames[saccharide.abbr];
         if (names) {
             for (let j = 0, jl = names.length; j < jl; ++j) {
-                map.set(names[j], saccharide)
+                map.set(names[j], saccharide);
             }
         }
     }
     for (let i = 0, il = UnknownSaccharideNames.length; i < il; ++i) {
-        map.set(UnknownSaccharideNames[i], UnknownSaccharideComponent)
+        map.set(UnknownSaccharideNames[i], UnknownSaccharideComponent);
     }
-    return map
-})()
+    return map;
+})();
 
 export type SaccharideComponentMap = ReadonlyMap<string, SaccharideComponent>

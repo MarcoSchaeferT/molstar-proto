@@ -1,65 +1,64 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { createReferenceCache, ReferenceCache } from 'mol-util/reference-cache';
-import { WebGLContext } from './context';
-import { idFactory } from 'mol-util/id-factory';
+import { idFactory } from '../../mol-util/id-factory';
+import { GLRenderingContext } from './compat';
+import { isDebugMode } from '../../mol-util/debug';
 
-const getNextShaderId = idFactory()
+const getNextShaderId = idFactory();
 
 function addLineNumbers(source: string) {
-    const lines = source.split('\n')
+    const lines = source.split('\n');
     for (let i = 0; i < lines.length; ++i) {
-        lines[i] = (i + 1) + ': ' + lines[i]
+        lines[i] = (i + 1) + ': ' + lines[i];
     }
-    return lines.join('\n')
+    return lines.join('\n');
 }
 
 export type ShaderType = 'vert' | 'frag'
-export interface ShaderProps { type: ShaderType, source: string }
+export type ShaderProps = { type: ShaderType, source: string }
 export interface Shader {
     readonly id: number
     attach: (program: WebGLProgram) => void
+    reset: () => void
     destroy: () => void
 }
 
-function createShader(ctx: WebGLContext, props: ShaderProps): Shader {
-    const { gl } = ctx
-    const { type, source } = props
-
-    const shader = gl.createShader(type === 'vert' ? gl.VERTEX_SHADER : gl.FRAGMENT_SHADER)
+function getShader(gl: GLRenderingContext, props: ShaderProps) {
+    const { type, source } = props;
+    const shader = gl.createShader(type === 'vert' ? gl.VERTEX_SHADER : gl.FRAGMENT_SHADER);
     if (shader === null) {
-        throw new Error(`Error creating ${type} shader`)
+        throw new Error(`Error creating ${type} shader`);
     }
 
-    gl.shaderSource(shader, source)
-    gl.compileShader(shader)
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
 
-    if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) === false) {
-        console.warn(`'${type}' shader info log '${gl.getShaderInfoLog(shader)}'\n${addLineNumbers(source)}`)
-        throw new Error(`Error compiling ${type} shader`)
+    if (isDebugMode && gl.getShaderParameter(shader, gl.COMPILE_STATUS) === false) {
+        console.warn(`'${type}' shader info log '${gl.getShaderInfoLog(shader)}'\n${addLineNumbers(source)}`);
+        throw new Error(`Error compiling ${type} shader`);
     }
+
+    return shader;
+}
+
+export function createShader(gl: GLRenderingContext, props: ShaderProps): Shader {
+    let shader = getShader(gl, props);
 
     return {
         id: getNextShaderId(),
         attach: (program: WebGLProgram) => {
-            gl.attachShader(program, shader)
+            gl.attachShader(program, shader);
+        },
+
+        reset: () => {
+            shader = getShader(gl, props);
         },
         destroy: () => {
-            gl.deleteShader(shader)
+            gl.deleteShader(shader);
         }
-    }
-}
-
-export type ShaderCache = ReferenceCache<Shader, ShaderProps, WebGLContext>
-
-export function createShaderCache(): ShaderCache {
-    return createReferenceCache(
-        (props: ShaderProps) => JSON.stringify(props),
-        (ctx: WebGLContext, props: ShaderProps) => createShader(ctx, props),
-        (shader: Shader) => { shader.destroy() }
-    )
+    };
 }

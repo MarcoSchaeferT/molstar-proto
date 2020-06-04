@@ -7,6 +7,18 @@
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
 
+/** Assign to the object if a given property in update is undefined */
+export function assignIfUndefined<T>(to: Partial<T>, full: T): T {
+    for (const k of Object.keys(full)) {
+        if (!hasOwnProperty.call(full, k)) continue;
+
+        if (typeof (to as any)[k] === 'undefined') {
+            (to as any)[k] = (full as any)[k];
+        }
+    }
+    return to as T;
+}
+
 /** Create new object if any property in "update" changes in "source". */
 export function shallowMerge2<T>(source: T, update: Partial<T>): T {
     // Adapted from LiteMol (https://github.com/dsehnal/LiteMol)
@@ -66,14 +78,15 @@ export function deepClone<T>(source: T): T {
     if (null === source || 'object' !== typeof source) return source;
 
     if (source instanceof Array) {
-      const copy: any[] = [];
-      for (let i = 0, len = source.length; i < len; i++) {
-          copy[i] = deepClone(source[i]);
-      }
-      return copy as any as T;
+        const copy: any[] = [];
+        for (let i = 0, len = source.length; i < len; i++) {
+            copy[i] = deepClone(source[i]);
+        }
+        return copy as any as T;
     }
 
-    if (source instanceof Object) {
+    // `instanceof Object` does not find `Object.create(null)`
+    if (typeof source === 'object' && !('prototype' in source)) {
         const copy: { [k: string]: any } = {};
         for (let k in source) {
             if (hasOwnProperty.call(source, k)) copy[k] = deepClone(source[k]);
@@ -84,10 +97,17 @@ export function deepClone<T>(source: T): T {
     throw new Error(`Can't clone, type "${typeof source}" unsupported`);
 }
 
-export function mapObjectMap<O extends { [k: string]: T }, T, S>(o: O, f: (v: T) => S): { [k: string]: S } {
+export function mapObjectMap<T, S>(o: { [k: string]: T }, f: (v: T) => S): { [k: string]: S } {
     const ret: any = { };
     for (const k of Object.keys(o)) {
         ret[k] = f((o as any)[k]);
     }
     return ret;
+}
+
+export function objectForEach<T>(o: { [k: string]: T }, f: (v: T, k: string) => void) {
+    if (!o) return;
+    for (const k of Object.keys(o)) {
+        f((o as any)[k], k);
+    }
 }

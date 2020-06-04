@@ -4,9 +4,10 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { QueryPredicate, StructureElement, StructureProperties as Props } from 'mol-model/structure';
-import { AtomsQueryParams } from 'mol-model/structure/query/queries/generators';
+import { QueryPredicate, StructureElement, StructureProperties as Props } from '../../../mol-model/structure';
+import { AtomsQueryParams } from '../../../mol-model/structure/query/queries/generators';
 import { AtomSiteSchema, AtomSiteSchemaElement } from '../server/api';
+import { ElementSymbol } from '../../../mol-model/structure/model/types';
 
 export function getAtomsTests(params: AtomSiteSchema): Partial<AtomsQueryParams>[] {
     if (!params) return [{ }];
@@ -61,16 +62,6 @@ function residueTest(params: AtomSiteSchemaElement): QueryPredicate | undefined 
         values.push(+params.auth_seq_id);
     }
 
-    if (typeof params.label_comp_id !== 'undefined') {
-        props.push(Props.residue.label_comp_id);
-        values.push(params.label_comp_id);
-    }
-
-    if (typeof params.auth_comp_id !== 'undefined') {
-        props.push(Props.residue.auth_comp_id);
-        values.push(params.auth_comp_id);
-    }
-
     if (typeof params.pdbx_PDB_ins_code !== 'undefined') {
         props.push(Props.residue.pdbx_PDB_ins_code);
         values.push(params.pdbx_PDB_ins_code);
@@ -86,17 +77,27 @@ function atomTest(params: AtomSiteSchemaElement): QueryPredicate | undefined {
 
     if (typeof params.label_atom_id !== 'undefined') {
         props.push(Props.atom.label_atom_id);
-        values.push(+params.label_atom_id);
+        values.push(params.label_atom_id);
     }
 
     if (typeof params.auth_atom_id !== 'undefined') {
         props.push(Props.atom.auth_atom_id);
-        values.push(+params.auth_atom_id);
+        values.push(params.auth_atom_id);
     }
 
     if (typeof params.type_symbol !== 'undefined') {
         props.push(Props.atom.type_symbol);
-        values.push(+params.type_symbol);
+        values.push(ElementSymbol(params.type_symbol));
+    }
+
+    if (typeof params.label_comp_id !== 'undefined') {
+        props.push(Props.atom.label_comp_id);
+        values.push(params.label_comp_id);
+    }
+
+    if (typeof params.auth_comp_id !== 'undefined') {
+        props.push(Props.atom.auth_comp_id);
+        values.push(params.auth_comp_id);
     }
 
     return andEqual(props, values);

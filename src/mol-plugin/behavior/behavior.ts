@@ -4,16 +4,16 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { PluginStateTransform, PluginStateObject } from '../state/objects';
-import { StateTransformer, StateTransform } from 'mol-state';
-import { Task } from 'mol-task';
-import { PluginContext } from 'mol-plugin/context';
+import { PluginStateTransform, PluginStateObject } from '../../mol-plugin-state/objects';
+import { StateTransformer, StateTransform } from '../../mol-state';
+import { Task } from '../../mol-task';
+import { PluginContext } from '../../mol-plugin/context';
 import { PluginCommand } from '../command';
 import { Observable } from 'rxjs';
-import { ParamDefinition } from 'mol-util/param-definition';
-import { shallowEqual } from 'mol-util';
+import { ParamDefinition } from '../../mol-util/param-definition';
+import { shallowEqualObjects } from '../../mol-util';
 
-export { PluginBehavior }
+export { PluginBehavior };
 
 interface PluginBehavior<P = unknown> {
     register(ref: StateTransform.Ref): void,
@@ -66,7 +66,7 @@ namespace PluginBehavior {
         }
     });
 
-    const categoryMap = new Map<string, string>();
+    const categoryMap = new Map<string, keyof typeof Categories>();
     export function getCategoryId(t: StateTransformer) {
         return categoryMap.get(t.id)!;
     }
@@ -87,7 +87,7 @@ namespace PluginBehavior {
                     if (!b.data.update) return StateTransformer.UpdateResult.Unchanged;
                     const updated = await b.data.update(newParams);
                     return updated ? StateTransformer.UpdateResult.Updated : StateTransformer.UpdateResult.Unchanged;
-                })
+                });
             },
             canAutoUpdate: params.canAutoUpdate
         });
@@ -108,7 +108,7 @@ namespace PluginBehavior {
             }
             // TODO can't be private due to bug with generating declerations, see https://github.com/Microsoft/TypeScript/issues/17293
             constructor(/** private */ public ctx: PluginContext) { }
-        }
+        };
     }
 
     export abstract class Handler<P = { }> implements PluginBehavior<P> {
@@ -128,7 +128,7 @@ namespace PluginBehavior {
             this.subs = [];
         }
         update(params: P): boolean | Promise<boolean> {
-            if (shallowEqual(params, this.params)) return false;
+            if (shallowEqualObjects(params, this.params)) return false;
             this.params = params;
             return true;
         }
@@ -152,7 +152,7 @@ namespace PluginBehavior {
             this.subs = [];
         }
 
-        constructor(protected plugin: PluginContext) {
+        constructor(protected plugin: PluginContext, protected params: P) {
         }
     }
 }

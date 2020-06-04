@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
@@ -49,6 +49,7 @@ namespace StateSelection {
         parent(): Builder<C>;
         first(): Builder<C>;
         filter(p: (n: C) => boolean): Builder<C>;
+        withTag<D extends StateObjectCell = C>(tag: string): Builder<D>;
         withTransformer<T extends StateTransformer<any, StateObjectCell.Obj<C>, any>>(t: T): Builder<StateObjectCell<StateObjectCell.Obj<C>, StateTransform<T>>>;
         withStatus(s: StateObjectCell.Status): Builder<C>;
         subtree(): Builder;
@@ -67,7 +68,7 @@ namespace StateSelection {
     };
 
     function registerModifier(name: string, f: Function) {
-        BuilderPrototype[name] = function (this: any, ...args: any[]) { return f.call(void 0, this, ...args) };
+        BuilderPrototype[name] = function (this: any, ...args: any[]) { return f.call(void 0, this, ...args); };
     }
 
     function build<C extends StateObjectCell>(compile: () => Query<C>): Builder<C> {
@@ -115,6 +116,14 @@ namespace StateSelection {
             });
         }
 
+        export function ofTransformerWithError<T extends StateTransformer<any, A, any>, A extends StateObject>(t: T, root: StateTransform.Ref = StateTransform.RootRef) {
+            return build(() => state => {
+                const ctx = { ret: [] as StateObjectCell<A, StateTransform<T>>[], cells: state.cells, t };
+                StateTree.doPreOrder(state.tree, state.tree.transforms.get(root), ctx, _findOfTransformerWithError);
+                return ctx.ret;
+            });
+        }
+
         function _findRootsOfType(n: StateTransform, _: any, s: { type: StateObject.Type, roots: StateObjectCell[], cells: State.Cells }) {
             const cell = s.cells.get(n.ref);
             if (cell && cell.obj && cell.obj.type === s.type) {
@@ -135,6 +144,14 @@ namespace StateSelection {
         function _findOfTransformer(n: StateTransform, _: any, s: { t: StateTransformer, ret: StateObjectCell[], cells: State.Cells }) {
             const cell = s.cells.get(n.ref);
             if (cell && cell.obj && cell.transform.transformer === s.t) {
+                s.ret.push(cell);
+            }
+            return true;
+        }
+
+        function _findOfTransformerWithError(n: StateTransform, _: any, s: { t: StateTransformer, ret: StateObjectCell[], cells: State.Cells }) {
+            const cell = s.cells.get(n.ref);
+            if (cell && cell.status === 'error' && cell.transform.transformer === s.t) {
                 s.ret.push(cell);
             }
             return true;
@@ -182,7 +199,7 @@ namespace StateSelection {
                 }
             }
             return ret;
-        })
+        });
     }
 
     registerModifier('first', first);
@@ -200,11 +217,14 @@ namespace StateSelection {
     registerModifier('withStatus', withStatus);
     export function withStatus(b: Selector, s: StateObjectCell.Status) { return filter(b, n => n.status === s); }
 
+    registerModifier('withTag', withTag);
+    export function withTag(b: Selector, tag: string) { return filter(b, n => !!n.transform.tags && n.transform.tags.indexOf(tag) >= 0); }
+
     registerModifier('subtree', subtree);
     export function subtree(b: Selector) {
         return flatMap(b, (n, s) => {
             const nodes = [] as string[];
-            StateTree.doPreOrder(s.tree, s.tree.transforms.get(n.transform.ref), nodes, (x, _, ctx) => { ctx.push(x.ref) });
+            StateTree.doPreOrder(s.tree, s.tree.transforms.get(n.transform.ref), nodes, (x, _, ctx) => { ctx.push(x.ref); });
             return nodes.map(x => s.cells.get(x)!);
         });
     }
@@ -268,8 +288,12 @@ namespace StateSelection {
     }
 
     function _findUniqueTagsInSubtree(n: StateTransform, _: any, s: { refs: { [name: string]: StateTransform.Ref }, tags: Set<string> }) {
-        if (n.props.tag && s.tags.has(n.props.tag)) {
-            s.refs[n.props.tag] = n.ref;
+        if (n.tags) {
+            for (const t of n.tags) {
+                if (!s.tags.has(t)) continue;
+                s.refs[t] = n.ref;
+                break;
+            }
         }
         return true;
     }
@@ -279,12 +303,44 @@ namespace StateSelection {
     }
 
     function _findTagInSubtree(n: StateTransform, _: any, s: { ref: string | undefined, tag: string }) {
-        if (n.props.tag === s.tag) {
+        if (n.tags && n.tags.indexOf(s.tag) >= 0) {
             s.ref = n.ref;
             return false;
         }
         return true;
     }
+
+    export function findWithAllTags<K extends string = string>(tree: StateTree, root: StateTransform.Ref, tags: Set<K>): StateTransform[] {
+        return StateTree.doPreOrder(tree, tree.transforms.get(root), { refs: [], tags }, _findWithAllTags).refs;
+    }
+
+    function _findWithAllTags(n: StateTransform, _: any, s: { refs: StateTransform[], tags: Set<string> }) {
+        if (n.tags) {
+            const len = s.tags.size;
+            let found = 0;
+            for (const t of n.tags) {
+                if (!s.tags.has(t)) continue;
+                found++;
+
+                if (found === len) {
+                    s.refs.push(n);
+                    break;
+                }
+            }
+        } else if (s.tags.size === 0) {
+            s.refs.push(n);
+        }
+    }
+
+    export function tryFindDecorator<T extends StateTransformer>(state: State, root: StateTransform.Ref, transformer: T): StateObjectCell<StateTransformer.To<T>, StateTransform<T>> | undefined {
+        const t = state.transforms.get(root);
+        if (t.transformer === transformer) return state.cells.get(root)! as any;
+
+        const children = state.tree.children.get(root);
+        if (children.size !== 1) return;
+        const first = children.first();
+        if (state.transforms.get(first).transformer.definition.isDecorator) return tryFindDecorator(state, first, transformer);
+    }
 }
 
-export { StateSelection }
+export { StateSelection };

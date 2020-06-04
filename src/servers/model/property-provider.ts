@@ -4,10 +4,19 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as fs from 'fs'
-import { Model } from 'mol-model/structure';
-import Config from './config';
-import { ConsoleLogger } from 'mol-util/console-logger';
+import * as fs from 'fs';
+import { Model } from '../../mol-model/structure';
+import { ModelServerConfig as Config } from './config';
+import { ConsoleLogger } from '../../mol-util/console-logger';
+
+// TODO enable dynamic imports again
+import * as pdbeProps from './properties/pdbe';
+import * as wwpdbProps from './properties/wwpdb';
+
+const attachModelProperties: { [k: string]: AttachModelProperties } = {
+    pdbe: pdbeProps.attachModelProperties,
+    wwpdb: wwpdbProps.attachModelProperties
+};
 
 export interface ModelPropertyProviderConfig {
     sources: string[],
@@ -39,7 +48,11 @@ export function createModelPropertiesProvider(configOrPath: ModelPropertyProvide
 
     const ps: AttachModelProperties[] = [];
     for (const p of config.sources) {
-        ps.push(require(p).attachModelProperties);
+        if (p in attachModelProperties) {
+            ps.push(attachModelProperties[p]);
+        } else {
+            ConsoleLogger.error('Config', `Could not find property provider '${p}', ignoring.`);
+        }
     }
 
     return (model, cache) => {
@@ -48,5 +61,5 @@ export function createModelPropertiesProvider(configOrPath: ModelPropertyProvide
             for (const e of p({ model, cache, params: config.params })) ret.push(e);
         }
         return ret;
-    }
+    };
 }

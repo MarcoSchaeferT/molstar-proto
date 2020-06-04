@@ -11,6 +11,8 @@ export class AsyncQueue<T> {
     private queue: T[] = [];
     private signal = new Subject<{ v: T, stillPresent: boolean }>();
 
+    get length() { return this.queue.length; }
+
     enqueue(v: T) {
         this.queue.push(v);
         if (this.queue.length === 1) return true;
@@ -27,7 +29,7 @@ export class AsyncQueue<T> {
     remove(v: T) {
         const rem = arrayRemoveInPlace(this.queue, v);
         if (rem)
-        this.signal.next({ v, stillPresent: false })
+            this.signal.next({ v, stillPresent: false });
         return rem;
     }
 
@@ -39,6 +41,6 @@ export class AsyncQueue<T> {
                     res(removed);
                 }
             });
-        })
+        });
     }
 }

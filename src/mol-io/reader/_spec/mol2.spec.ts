@@ -1,5 +1,5 @@
 
-import Mol2 from '../mol2/parser'
+import { parseMol2 } from '../mol2/parser';
 
 const Mol2String = `@<TRIPOS>MOLECULE
 5816
@@ -60,7 +60,7 @@ GASTEIGER
     23    11    20    1
     24    13    22    1
     25    13    23    1
-    26    13    24    1`
+    26    13    24    1`;
 
 const Mol2StringMultiBlocks = `@<TRIPOS>MOLECULE
 5816
@@ -181,7 +181,7 @@ GASTEIGER
     23    11    20    1
     24    13    22    1
     25    13    23    1
-    26    13    24    1`
+    26    13    24    1`;
 
 const Mol2StringMinimal = `@<TRIPOS>MOLECULE
 5816
@@ -242,11 +242,11 @@ GASTEIGER
     23    11    20    1
     24    13    22    1
     25    13    23    1
-    26    13    24    1`
+    26    13    24    1`;
 
 describe('mol2 reader', () => {
     it('basic', async () => {
-        const parsed =  await Mol2(Mol2String).run();
+        const parsed =  await parseMol2(Mol2String, '').run();
         if (parsed.isError) {
             throw new Error(parsed.message);
         }
@@ -259,13 +259,13 @@ describe('mol2 reader', () => {
         const { molecule, atoms, bonds } = data;
 
         // molecule fields
-        expect(molecule.mol_name).toBe('5816')
-        expect(molecule.num_atoms).toBe(26)
+        expect(molecule.mol_name).toBe('5816');
+        expect(molecule.num_atoms).toBe(26);
         expect(molecule.num_bonds).toBe(26);
         expect(molecule.num_subst).toBe(0);
         expect(molecule.num_feat).toBe(0);
         expect(molecule.num_sets).toBe(0);
-        expect(molecule.mol_type).toBe('SMALL')
+        expect(molecule.mol_type).toBe('SMALL');
         expect(molecule.charge_type).toBe('GASTEIGER');
         expect(molecule.status_bits).toBe('');
         expect(molecule.mol_comment).toBe('');
@@ -297,7 +297,7 @@ describe('mol2 reader', () => {
     });
 
     it('multiblocks', async () => {
-        const parsed =  await Mol2(Mol2StringMultiBlocks).run();
+        const parsed =  await parseMol2(Mol2StringMultiBlocks, '').run();
         if (parsed.isError) {
             throw new Error(parsed.message);
         }
@@ -310,13 +310,13 @@ describe('mol2 reader', () => {
         const { molecule, atoms, bonds } = data;
 
         // molecule fields
-        expect(molecule.mol_name).toBe('5816')
-        expect(molecule.num_atoms).toBe(26)
+        expect(molecule.mol_name).toBe('5816');
+        expect(molecule.num_atoms).toBe(26);
         expect(molecule.num_bonds).toBe(26);
         expect(molecule.num_subst).toBe(0);
         expect(molecule.num_feat).toBe(0);
         expect(molecule.num_sets).toBe(0);
-        expect(molecule.mol_type).toBe('SMALL')
+        expect(molecule.mol_type).toBe('SMALL');
         expect(molecule.charge_type).toBe('GASTEIGER');
         expect(molecule.status_bits).toBe('');
         expect(molecule.mol_comment).toBe('');
@@ -348,7 +348,7 @@ describe('mol2 reader', () => {
     });
 
     it('minimal', async () => {
-        const parsed =  await Mol2(Mol2StringMinimal).run();
+        const parsed =  await parseMol2(Mol2StringMinimal, '').run();
         if (parsed.isError) {
             throw new Error(parsed.message);
         }
@@ -361,13 +361,13 @@ describe('mol2 reader', () => {
         const { molecule, atoms, bonds } = data;
 
         // molecule fields
-        expect(molecule.mol_name).toBe('5816')
-        expect(molecule.num_atoms).toBe(26)
+        expect(molecule.mol_name).toBe('5816');
+        expect(molecule.num_atoms).toBe(26);
         expect(molecule.num_bonds).toBe(26);
         expect(molecule.num_subst).toBe(0);
         expect(molecule.num_feat).toBe(0);
         expect(molecule.num_sets).toBe(0);
-        expect(molecule.mol_type).toBe('SMALL')
+        expect(molecule.mol_type).toBe('SMALL');
         expect(molecule.charge_type).toBe('GASTEIGER');
         expect(molecule.status_bits).toBe('');
         expect(molecule.mol_comment).toBe('');

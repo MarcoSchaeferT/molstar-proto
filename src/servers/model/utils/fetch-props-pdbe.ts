@@ -5,12 +5,12 @@
  */
 
 import fetch from 'node-fetch';
-import * as fs from 'fs'
-import * as path from 'path'
-import * as argparse from 'argparse'
-import { makeDir } from 'mol-util/make-dir';
-import { now } from 'mol-util/now';
-import { PerformanceMonitor } from 'mol-util/performance-monitor';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as argparse from 'argparse';
+import { makeDir } from '../../../mol-util/make-dir';
+import { now } from '../../../mol-util/now';
+import { PerformanceMonitor } from '../../../mol-util/performance-monitor';
 
 const cmdParser = new argparse.ArgumentParser({
     addHelp: true,
@@ -53,7 +53,7 @@ function findEntries() {
 
     const ret: { key: string, entries: string[] }[] = [];
     for (const key of keys) {
-        ret.push({ key, entries: groups.get(key)! })
+        ret.push({ key, entries: groups.get(key)! });
     }
 
     return ret;
@@ -67,21 +67,21 @@ async function process() {
     let prog = 0;
     for (const e of entries) {
         const ts = now();
-        console.log(`${prog}/${entries.length} ${e.entries.length} entries.`)
+        console.log(`${prog}/${entries.length} ${e.entries.length} entries.`);
         const data = Object.create(null);
 
         for (let ee of e.entries) {
-             const query = await fetch(`https://www.ebi.ac.uk/pdbe/api/validation/residuewise_outlier_summary/entry/${ee}`);
-             try {
+            const query = await fetch(`https://www.ebi.ac.uk/pdbe/api/validation/residuewise_outlier_summary/entry/${ee}`);
+            try {
                 if (query.status === 200) data[ee] = (await query.json())[ee] || { };
                 else console.error(ee, query.status);
-             } catch (e) {
+            } catch (e) {
                 console.error(ee, '' + e);
-             }
+            }
         }
-        //const query = await fetch(`https://www.ebi.ac.uk/pdbe/api/validation/residuewise_outlier_summary/entry`, { method: 'POST', body });
-        //console.log(query.status);
-        //const data = await query.text();
+        // const query = await fetch(`https://www.ebi.ac.uk/pdbe/api/validation/residuewise_outlier_summary/entry`, { method: 'POST', body });
+        // console.log(query.status);
+        // const data = await query.text();
         fs.writeFileSync(path.join(cmdArgs.out, e.key + '.json'), JSON.stringify(data));
         const time = now() - started;
         console.log(`${++prog}/${entries.length} in ${PerformanceMonitor.format(time)} (last ${PerformanceMonitor.format(now() - ts)}, avg ${PerformanceMonitor.format(time / prog)})`);

@@ -1,51 +1,108 @@
 /**
- * Copyright (c) 2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2019-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Structure } from 'mol-model/structure';
+import { Structure, Model } from '../../../../mol-model/structure';
 import { VolumeServerInfo } from './model';
-import { PluginContext } from 'mol-plugin/context';
-import { RuntimeContext } from 'mol-task';
+import { PluginContext } from '../../../../mol-plugin/context';
+import { RuntimeContext } from '../../../../mol-task';
+import { MmcifFormat } from '../../../../mol-model-formats/structure/mmcif';
+import { PluginConfig } from '../../../config';
 
 export function getStreamingMethod(s?: Structure, defaultKind: VolumeServerInfo.Kind = 'x-ray'): VolumeServerInfo.Kind {
     if (!s) return defaultKind;
 
     const model = s.models[0];
-    if (model.sourceData.kind !== 'mmCIF') return defaultKind;
+    if (!MmcifFormat.is(model.sourceData)) return defaultKind;
 
-    const data = model.sourceData.data.exptl.method;
-    for (let i = 0; i < data.rowCount; i++) {
-        const v = data.value(i).toUpperCase();
-        if (v.indexOf('MICROSCOPY') >= 0) return 'em';
-    }
-    return 'x-ray';
+    // Prefer EMDB entries over structure-factors (SF) e.g. for 'ELECTRON CRYSTALLOGRAPHY' entries
+    // like 6AXZ or 6KJ3 for which EMDB entries are available but map calculation from SF is hard.
+    if (Model.hasEmMap(model)) return 'em';
+    if (Model.hasXrayMap(model)) return 'x-ray';
+
+    // Fallbacks based on experimental method
+    if (Model.isFromEm(model)) return 'em';
+    if (Model.isFromXray(model)) return 'x-ray';
+    return defaultKind;
 }
 
-export async function getEmdbIdAndContourLevel(plugin: PluginContext, taskCtx: RuntimeContext, pdbId: string) {
+/** Returns EMD ID when available, otherwise falls back to PDB ID */
+export function getEmIds(model: Model): string[] {
+    const ids: string[] = [];
+    if (!MmcifFormat.is(model.sourceData)) return [ model.entryId ];
+
+    const { db_id, db_name, content_type } = model.sourceData.data.db.pdbx_database_related;
+    if (!db_name.isDefined) return [ model.entryId ];
+
+    for (let i = 0, il = db_name.rowCount; i < il; ++i) {
+        if (db_name.value(i).toUpperCase() === 'EMDB' && content_type.value(i) === 'associated EM volume') {
+            ids.push(db_id.value(i));
+        }
+    }
+
+    return ids;
+}
+
+export function getXrayIds(model: Model): string[] {
+    return [ model.entryId ];
+}
+
+export function getIds(method: VolumeServerInfo.Kind, s?: Structure): string[] {
+    if (!s || !s.models.length) return [];
+    const model = s.models[0];
+    switch (method) {
+        case 'em': return getEmIds(model);
+        case 'x-ray': return getXrayIds(model);
+    }
+}
+
+export async function getContourLevel(provider: 'emdb' | 'pdbe', plugin: PluginContext, taskCtx: RuntimeContext, emdbId: string) {
+    switch (provider) {
+        case 'emdb': return getContourLevelEmdb(plugin, taskCtx, emdbId);
+        case 'pdbe': return getContourLevelPdbe(plugin, taskCtx, emdbId);
+    }
+}
+
+export async function getContourLevelEmdb(plugin: PluginContext, taskCtx: RuntimeContext, emdbId: string) {
+    const emdbHeaderServer = plugin.config.get(PluginConfig.VolumeStreaming.EmdbHeaderServer);
+    const header = await plugin.fetch({ url: `${emdbHeaderServer}/${emdbId.toUpperCase()}/header/${emdbId.toLowerCase()}.xml`, type: 'xml' }).runInContext(taskCtx);
+    const map = header.getElementsByTagName('map')[0];
+    const contourLevel = parseFloat(map.getElementsByTagName('contourLevel')[0].textContent!);
+
+    return contourLevel;
+}
+
+export async function getContourLevelPdbe(plugin: PluginContext, taskCtx: RuntimeContext, emdbId: string) {
+    emdbId = emdbId.toUpperCase();
+    // TODO: parametrize to a differnt URL? in plugin settings perhaps
+    const header = await plugin.fetch({ url: `https://www.ebi.ac.uk/pdbe/api/emdb/entry/map/${emdbId}`, type: 'json' }).runInContext(taskCtx);
+    const emdbEntry = header?.[emdbId];
+    let contourLevel: number | undefined = void 0;
+    if (emdbEntry?.[0]?.map?.contour_level?.value !== void 0) {
+        contourLevel = +emdbEntry[0].map.contour_level.value;
+    }
+
+    return contourLevel;
+}
+
+export async function getEmdbIds(plugin: PluginContext, taskCtx: RuntimeContext, pdbId: string) {
     // TODO: parametrize to a differnt URL? in plugin settings perhaps
     const summary = await plugin.fetch({ url: `https://www.ebi.ac.uk/pdbe/api/pdb/entry/summary/${pdbId}`, type: 'json' }).runInContext(taskCtx);
 
-    const summaryEntry = summary && summary[pdbId];
-    let emdbId: string;
-    if (summaryEntry && summaryEntry[0] && summaryEntry[0].related_structures) {
-        const emdb = summaryEntry[0].related_structures.filter((s: any) => s.resource === 'EMDB');
+    const summaryEntry = summary?.[pdbId];
+    let emdbIds: string[] = [];
+    if (summaryEntry?.[0]?.related_structures) {
+        const emdb = summaryEntry[0].related_structures.filter((s: any) => s.resource === 'EMDB' && s.relationship === 'associated EM volume');
         if (!emdb.length) {
             throw new Error(`No related EMDB entry found for '${pdbId}'.`);
         }
-        emdbId = emdb[0].accession;
+        emdbIds.push(...emdb.map((e: { accession: string }) => e.accession));
     } else {
         throw new Error(`No related EMDB entry found for '${pdbId}'.`);
     }
 
-    // TODO: parametrize to a differnt URL? in plugin settings perhaps
-    const emdb = await plugin.fetch({ url: `https://www.ebi.ac.uk/pdbe/api/emdb/entry/map/${emdbId}`, type: 'json' }).runInContext(taskCtx);
-    const emdbEntry = emdb && emdb[emdbId];
-    let contour: number | undefined = void 0;
-    if (emdbEntry && emdbEntry[0] && emdbEntry[0].map && emdbEntry[0].map.contour_level && emdbEntry[0].map.contour_level.value !== void 0) {
-        contour = +emdbEntry[0].map.contour_level.value;
-    }
-
-    return { emdbId, contour };
+    return emdbIds;
 }

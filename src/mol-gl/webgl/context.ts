@@ -1,37 +1,67 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { createProgramCache, ProgramCache } from './program'
-import { createShaderCache, ShaderCache } from './shader'
-import { GLRenderingContext, COMPAT_instanced_arrays, COMPAT_standard_derivatives, COMPAT_vertex_array_object, getInstancedArrays, getStandardDerivatives, getVertexArrayObject, isWebGL2, COMPAT_element_index_uint, getElementIndexUint, COMPAT_texture_float, getTextureFloat, COMPAT_texture_float_linear, getTextureFloatLinear, COMPAT_blend_minmax, getBlendMinMax, getFragDepth, COMPAT_frag_depth } from './compat';
-import { createFramebufferCache, FramebufferCache } from './framebuffer';
-import { Scheduler } from 'mol-task';
+import { GLRenderingContext, isWebGL2 } from './compat';
+import { checkFramebufferStatus } from './framebuffer';
+import { Scheduler } from '../../mol-task';
+import { isDebugMode } from '../../mol-util/debug';
+import { createExtensions, WebGLExtensions } from './extensions';
+import { WebGLState, createState } from './state';
+import { PixelData } from '../../mol-util/image';
+import { WebGLResources, createResources } from './resources';
+import { RenderTarget, createRenderTarget } from './render-target';
+import { BehaviorSubject } from 'rxjs';
+import { now } from '../../mol-util/now';
 
 export function getGLContext(canvas: HTMLCanvasElement, contextAttributes?: WebGLContextAttributes): GLRenderingContext | null {
     function getContext(contextId: 'webgl' | 'experimental-webgl' | 'webgl2') {
         try {
-           return canvas.getContext(contextId, contextAttributes) as GLRenderingContext | null
+            return canvas.getContext(contextId, contextAttributes) as GLRenderingContext | null;
         } catch (e) {
-            return null
+            return null;
         }
     }
-    return getContext('webgl2') ||  getContext('webgl') || getContext('experimental-webgl')
+    return getContext('webgl2') ||  getContext('webgl') || getContext('experimental-webgl');
 }
 
 function getPixelRatio() {
-    return (typeof window !== 'undefined') ? window.devicePixelRatio : 1
+    return (typeof window !== 'undefined') ? window.devicePixelRatio : 1;
+}
+
+function getErrorDescription(gl: GLRenderingContext, error: number) {
+    switch (error) {
+        case gl.NO_ERROR: return 'no error';
+        case gl.INVALID_ENUM: return 'invalid enum';
+        case gl.INVALID_VALUE: return 'invalid value';
+        case gl.INVALID_OPERATION: return 'invalid operation';
+        case gl.INVALID_FRAMEBUFFER_OPERATION: return 'invalid framebuffer operation';
+        case gl.OUT_OF_MEMORY: return 'out of memory';
+        case gl.CONTEXT_LOST_WEBGL: return 'context lost';
+    }
+    return 'unknown error';
+}
+
+export function checkError(gl: GLRenderingContext) {
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL error: '${getErrorDescription(gl, error)}'`);
+    }
 }
 
 function unbindResources (gl: GLRenderingContext) {
     // bind null to all texture units
-    const maxTextureImageUnits = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS)
+    const maxTextureImageUnits = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
     for (let i = 0; i < maxTextureImageUnits; ++i) {
-        gl.activeTexture(gl.TEXTURE0 + i)
-        gl.bindTexture(gl.TEXTURE_2D, null)
-        gl.bindTexture(gl.TEXTURE_CUBE_MAP, null)
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+        if (isWebGL2(gl)) {
+            gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+            gl.bindTexture(gl.TEXTURE_3D, null);
+        }
     }
 
     // assign the smallest possible buffer to all attributes
@@ -43,260 +73,258 @@ function unbindResources (gl: GLRenderingContext) {
     }
 
     // bind null to all buffers
-    gl.bindBuffer(gl.ARRAY_BUFFER, null)
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null)
-    unbindFramebuffer(gl)
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+    unbindFramebuffer(gl);
 }
 
 function unbindFramebuffer(gl: GLRenderingContext) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 const tmpPixel = new Uint8Array(1 * 4);
 
 function checkSync(gl: WebGL2RenderingContext, sync: WebGLSync, resolve: () => void) {
     if (gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED) {
-        gl.deleteSync(sync)
-        resolve()
+        gl.deleteSync(sync);
+        resolve();
     } else {
-        Scheduler.setImmediate(checkSync, gl, sync, resolve)
+        Scheduler.setImmediate(checkSync, gl, sync, resolve);
     }
 }
 
 function fence(gl: WebGL2RenderingContext, resolve: () => void) {
-    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     if (!sync) {
-        console.warn('Could not create a WebGLSync object')
-        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, tmpPixel)
-        resolve()
+        console.warn('Could not create a WebGLSync object');
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, tmpPixel);
+        resolve();
     } else {
-        Scheduler.setImmediate(checkSync, gl, sync, resolve)
+        Scheduler.setImmediate(checkSync, gl, sync, resolve);
     }
 }
 
-let SentWebglSyncObjectNotSupportedInWebglMessage = false
+let SentWebglSyncObjectNotSupportedInWebglMessage = false;
 function waitForGpuCommandsComplete(gl: GLRenderingContext): Promise<void> {
     return new Promise(resolve => {
         if (isWebGL2(gl)) {
             // TODO seems quite slow
-            fence(gl, resolve)
+            fence(gl, resolve);
         } else {
             if (!SentWebglSyncObjectNotSupportedInWebglMessage) {
-                console.info('Sync object not supported in WebGL')
-                SentWebglSyncObjectNotSupportedInWebglMessage = true
+                console.info('Sync object not supported in WebGL');
+                SentWebglSyncObjectNotSupportedInWebglMessage = true;
             }
-            waitForGpuCommandsCompleteSync(gl)
-            resolve()
+            waitForGpuCommandsCompleteSync(gl);
+            resolve();
         }
-    })
+    });
 }
 
 function waitForGpuCommandsCompleteSync(gl: GLRenderingContext): void {
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, tmpPixel)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, tmpPixel);
 }
 
-export function createImageData(buffer: ArrayLike<number>, width: number, height: number) {
-    const w = width * 4
-    const h = height
-    const data = new Uint8ClampedArray(width * height * 4)
-    for (let i = 0, maxI = h / 2; i < maxI; ++i) {
-        for (let j = 0, maxJ = w; j < maxJ; ++j) {
-            const index1 = i * w + j;
-            const index2 = (h-i-1) * w + j;
-            data[index1] = buffer[index2];
-            data[index2] = buffer[index1];
-        }
+export function readPixels(gl: GLRenderingContext, x: number, y: number, width: number, height: number, buffer: Uint8Array | Float32Array) {
+    if (isDebugMode) checkFramebufferStatus(gl);
+    if (buffer instanceof Uint8Array) {
+        gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+    } else if (buffer instanceof Float32Array) {
+        gl.readPixels(x, y, width, height, gl.RGBA, gl.FLOAT, buffer);
+    } else {
+        throw new Error('unsupported readPixels buffer type');
     }
-    return new ImageData(data, width, height);
+    if (isDebugMode) checkError(gl);
+}
+
+function getDrawingBufferPixelData(gl: GLRenderingContext) {
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    const buffer = new Uint8Array(w * h * 4);
+    unbindFramebuffer(gl);
+    gl.viewport(0, 0, w, h);
+    readPixels(gl, 0, 0, w, h, buffer);
+    return PixelData.flipY(PixelData.create(buffer, w, h));
 }
 
 //
 
-type Extensions = {
-    instancedArrays: COMPAT_instanced_arrays
-    standardDerivatives: COMPAT_standard_derivatives
-    blendMinMax: COMPAT_blend_minmax
-    textureFloat: COMPAT_texture_float
-    textureFloatLinear: COMPAT_texture_float_linear
-    elementIndexUint: COMPAT_element_index_uint | null
-    vertexArrayObject: COMPAT_vertex_array_object | null
-    fragDepth: COMPAT_frag_depth | null
+function createStats() {
+    return {
+        resourceCounts: {
+            attribute: 0,
+            elements: 0,
+            framebuffer: 0,
+            program: 0,
+            renderbuffer: 0,
+            shader: 0,
+            texture: 0,
+            vertexArray: 0,
+        },
+
+        drawCount: 0,
+        instanceCount: 0,
+        instancedDrawCount: 0,
+    };
 }
+
+export type WebGLStats = ReturnType<typeof createStats>
+
+//
 
 /** A WebGL context object, including the rendering context, resource caches and counts */
 export interface WebGLContext {
     readonly gl: GLRenderingContext
     readonly isWebGL2: boolean
-    readonly extensions: Extensions
     readonly pixelRatio: number
 
-    readonly shaderCache: ShaderCache
-    readonly programCache: ProgramCache
-    readonly framebufferCache: FramebufferCache
-
-    currentProgramId: number
-
-    bufferCount: number
-    framebufferCount: number
-    renderbufferCount: number
-    textureCount: number
-    vaoCount: number
-
-    drawCount: number
-    instanceCount: number
-    instancedDrawCount: number
+    readonly extensions: WebGLExtensions
+    readonly state: WebGLState
+    readonly stats: WebGLStats
+    readonly resources: WebGLResources
 
     readonly maxTextureSize: number
+    readonly maxRenderbufferSize: number
     readonly maxDrawBuffers: number
 
+    readonly isContextLost: boolean
+    readonly contextRestored: BehaviorSubject<now.Timestamp>
+    setContextLost: () => void
+    handleContextRestored: () => void
+
+    createRenderTarget: (width: number, height: number) => RenderTarget
     unbindFramebuffer: () => void
-    readPixels: (x: number, y: number, width: number, height: number, buffer: Uint8Array) => void
+    readPixels: (x: number, y: number, width: number, height: number, buffer: Uint8Array | Float32Array) => void
     readPixelsAsync: (x: number, y: number, width: number, height: number, buffer: Uint8Array) => Promise<void>
     waitForGpuCommandsComplete: () => Promise<void>
     waitForGpuCommandsCompleteSync: () => void
+    getDrawingBufferPixelData: () => PixelData
     destroy: () => void
 }
 
 export function createContext(gl: GLRenderingContext): WebGLContext {
-    const instancedArrays = getInstancedArrays(gl)
-    if (instancedArrays === null) {
-        throw new Error('Could not find support for "instanced_arrays"')
-    }
-    const standardDerivatives = getStandardDerivatives(gl)
-    if (standardDerivatives === null) {
-        throw new Error('Could not find support for "standard_derivatives"')
-    }
-    const blendMinMax = getBlendMinMax(gl)
-    if (blendMinMax === null) {
-        throw new Error('Could not find support for "blend_minmax"')
-    }
-    const textureFloat = getTextureFloat(gl)
-    if (textureFloat === null) {
-        throw new Error('Could not find support for "texture_float"')
-    }
-    const textureFloatLinear = getTextureFloatLinear(gl)
-    if (textureFloatLinear === null) {
-        throw new Error('Could not find support for "texture_float_linear"')
-    }
-    const elementIndexUint = getElementIndexUint(gl)
-    if (elementIndexUint === null) {
-        console.warn('Could not find support for "element_index_uint"')
-    }
-    const vertexArrayObject = getVertexArrayObject(gl)
-    if (vertexArrayObject === null) {
-        console.log('Could not find support for "vertex_array_object"')
-    }
-    const fragDepth = getFragDepth(gl)
-    if (fragDepth === null) {
-        console.log('Could not find support for "frag_depth"')
-    }
-
-    const shaderCache = createShaderCache()
-    const programCache = createProgramCache()
-    const framebufferCache = createFramebufferCache()
+    const extensions = createExtensions(gl);
+    const state = createState(gl);
+    const stats = createStats();
+    const resources = createResources(gl, state, stats, extensions);
 
     const parameters = {
-        maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-        maxDrawBuffers: isWebGL2(gl) ? gl.getParameter(gl.MAX_DRAW_BUFFERS) : 0,
-        maxVertexTextureImageUnits: gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+        maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
+        maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number,
+        maxDrawBuffers: isWebGL2(gl) ? gl.getParameter(gl.MAX_DRAW_BUFFERS) as number : 0,
+        maxVertexTextureImageUnits: gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) as number,
+    };
+
+    if (parameters.maxVertexTextureImageUnits < 8) {
+        throw new Error('Need "MAX_VERTEX_TEXTURE_IMAGE_UNITS" >= 8');
     }
 
-    if (parameters.maxVertexTextureImageUnits < 4) {
-        throw new Error('Need "MAX_VERTEX_TEXTURE_IMAGE_UNITS" >= 4')
-    }
+    let isContextLost = false;
+    let contextRestored = new BehaviorSubject<now.Timestamp>(0 as now.Timestamp);
 
-    let readPixelsAsync: (x: number, y: number, width: number, height: number, buffer: Uint8Array) => Promise<void>
+    let readPixelsAsync: (x: number, y: number, width: number, height: number, buffer: Uint8Array) => Promise<void>;
     if (isWebGL2(gl)) {
-        const pbo = gl.createBuffer()
-        let _buffer: Uint8Array | undefined = void 0
-        let _resolve: (() => void) | undefined = void 0
-        let _reading = false
+        const pbo = gl.createBuffer();
+        let _buffer: Uint8Array | undefined = void 0;
+        let _resolve: (() => void) | undefined = void 0;
+        let _reading = false;
 
         const bindPBO = () => {
-            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo)
-            gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, _buffer!)
-            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null)
-            _reading = false
-            _resolve!()
-            _resolve = void 0
-            _buffer = void 0
-        }
+            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+            gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, _buffer!);
+            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+            _reading = false;
+            _resolve!();
+            _resolve = void 0;
+            _buffer = void 0;
+        };
         readPixelsAsync = (x: number, y: number, width: number, height: number, buffer: Uint8Array): Promise<void> => new Promise<void>((resolve, reject) => {
             if (_reading) {
-                reject('Can not call multiple readPixelsAsync at the same time')
-                return
+                reject('Can not call multiple readPixelsAsync at the same time');
+                return;
             }
             _reading = true;
-            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo)
-            gl.bufferData(gl.PIXEL_PACK_BUFFER, width * height * 4, gl.STREAM_READ)
-            gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0)
-            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null)
+            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+            gl.bufferData(gl.PIXEL_PACK_BUFFER, width * height * 4, gl.STREAM_READ);
+            gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
             // need to unbind/bind PBO before/after async awaiting the fence
-            _resolve = resolve
-            _buffer = buffer
-            fence(gl, bindPBO)
-        })
+            _resolve = resolve;
+            _buffer = buffer;
+            fence(gl, bindPBO);
+        });
     } else {
         readPixelsAsync = async (x: number, y: number, width: number, height: number, buffer: Uint8Array) => {
-            gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer)
-        }
+            readPixels(gl, x, y, width, height, buffer);
+        };
     }
+
+    const renderTargets = new Set<RenderTarget>();
 
     return {
         gl,
         isWebGL2: isWebGL2(gl),
-        extensions: {
-            instancedArrays,
-            standardDerivatives,
-            blendMinMax,
-            textureFloat,
-            textureFloatLinear,
-            elementIndexUint,
-            vertexArrayObject,
-            fragDepth
+        get pixelRatio () {
+            // this can change during the lifetime of a rendering context, so need to re-obtain on access
+            return getPixelRatio();
         },
-        get pixelRatio () { return getPixelRatio() },
 
-        shaderCache,
-        programCache,
-        framebufferCache,
+        extensions,
+        state,
+        stats,
+        resources,
 
-        currentProgramId: -1,
+        get maxTextureSize () { return parameters.maxTextureSize; },
+        get maxRenderbufferSize () { return parameters.maxRenderbufferSize; },
+        get maxDrawBuffers () { return parameters.maxDrawBuffers; },
 
-        bufferCount: 0,
-        framebufferCount: 0,
-        renderbufferCount: 0,
-        textureCount: 0,
-        vaoCount: 0,
+        get isContextLost () {
+            return isContextLost || gl.isContextLost();
+        },
+        contextRestored,
+        setContextLost: () => {
+            isContextLost = true;
+        },
+        handleContextRestored: () => {
+            Object.assign(extensions, createExtensions(gl));
 
-        drawCount: 0,
-        instanceCount: 0,
-        instancedDrawCount: 0,
+            state.reset();
+            state.currentMaterialId = -1;
+            state.currentProgramId = -1;
+            state.currentRenderItemId = -1;
 
-        get maxTextureSize () { return parameters.maxTextureSize },
-        get maxDrawBuffers () { return parameters.maxDrawBuffers },
+            resources.reset();
+            renderTargets.forEach(rt => rt.reset());
 
+            isContextLost = false;
+            contextRestored.next(now());
+        },
+
+        createRenderTarget: (width: number, height: number) => {
+            const renderTarget = createRenderTarget(gl, resources, width, height);
+            renderTargets.add(renderTarget);
+            return {
+                ...renderTarget,
+                destroy: () => {
+                    renderTarget.destroy();
+                    renderTargets.delete(renderTarget);
+                }
+            };
+        },
         unbindFramebuffer: () => unbindFramebuffer(gl),
-        readPixels: (x: number, y: number, width: number, height: number, buffer: Uint8Array) => {
-            gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer)
-            // TODO check is very expensive
-            // if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
-            //     gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer)
-            // } else {
-            //     console.error('Reading pixels failed. Framebuffer not complete.')
-            // }
+        readPixels: (x: number, y: number, width: number, height: number, buffer: Uint8Array | Float32Array) => {
+            readPixels(gl, x, y, width, height, buffer);
         },
         readPixelsAsync,
         waitForGpuCommandsComplete: () => waitForGpuCommandsComplete(gl),
         waitForGpuCommandsCompleteSync: () => waitForGpuCommandsCompleteSync(gl),
+        getDrawingBufferPixelData: () => getDrawingBufferPixelData(gl),
 
         destroy: () => {
-            unbindResources(gl)
-            programCache.dispose()
-            shaderCache.dispose()
-            framebufferCache.dispose()
-            // TODO destroy buffers and textures
+            resources.destroy();
+            unbindResources(gl);
         }
-    }
+    };
 }

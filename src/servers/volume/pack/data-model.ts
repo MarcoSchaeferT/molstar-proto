@@ -5,11 +5,11 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
-import * as Format from './format'
-import * as DataFormat from '../common/data-format'
-import { FileHandle } from 'mol-io/common/file-handle';
-import { SimpleBuffer } from 'mol-io/common/simple-buffer';
-import { TypedArrayValueArray, TypedArrayValueType } from 'mol-io/common/typed-array';
+import * as Format from './format';
+import * as DataFormat from '../common/data-format';
+import { FileHandle } from '../../../mol-io/common/file-handle';
+import { SimpleBuffer } from '../../../mol-io/common/simple-buffer';
+import { TypedArrayValueArray, TypedArrayValueType } from '../../../mol-io/common/typed-array';
 
 const FORMAT_VERSION = '1.0.0';
 
@@ -122,7 +122,7 @@ export function createHeader(ctx: Context): DataFormat.Header {
                 rate: s.rate,
                 valuesInfo,
                 sampleCount: s.sampleCount,
-            }
+            };
         })
     };
 }

@@ -1,14 +1,16 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { UUID } from 'mol-util';
-import { getQueryByName, normalizeQueryParams, QueryDefinition, QueryName, QueryParams } from './api';
-import { LinkedList } from 'mol-data/generic';
+import { UUID } from '../../../mol-util';
+import { getQueryByName, QueryDefinition, QueryName, QueryParams } from './api';
+import { LinkedList } from '../../../mol-data/generic';
+import { ResultWriter } from '../utils/writer';
 
 export interface ResponseFormat {
+    tarball: boolean,
     isBinary: boolean
 }
 
@@ -16,44 +18,71 @@ export interface Job {
     id: UUID,
     datetime_utc: string,
 
+    entries: JobEntry[],
+
+    responseFormat: ResponseFormat,
+    outputFilename?: string,
+
+    writer: ResultWriter
+}
+
+export interface JobDefinition {
+    entries: JobEntry[],
+    writer: ResultWriter,
+    options?: { outputFilename?: string, binary?: boolean, tarball?: boolean }
+}
+
+export interface JobEntry {
+    job: Job,
     sourceId: '_local_' | string,
     entryId: string,
     key: string,
 
     queryDefinition: QueryDefinition,
     normalizedParams: any,
-    responseFormat: ResponseFormat,
     modelNums?: number[],
-
-    outputFilename?: string
+    copyAllCategories: boolean
 }
 
-export interface JobDefinition<Name extends QueryName> {
+interface JobEntryDefinition<Name extends QueryName> {
     sourceId?: string, // = '_local_',
     entryId: string,
     queryName: Name,
     queryParams: QueryParams<Name>,
-    options?: { modelNums?: number[], outputFilename?: string, binary?: boolean }
+    modelNums?: number[],
+    copyAllCategories: boolean
 }
 
-export function createJob<Name extends QueryName>(definition: JobDefinition<Name>): Job {
+export function JobEntry<Name extends QueryName>(definition: JobEntryDefinition<Name>): JobEntry {
     const queryDefinition = getQueryByName(definition.queryName);
     if (!queryDefinition) throw new Error(`Query '${definition.queryName}' is not supported.`);
 
-    const normalizedParams = normalizeQueryParams(queryDefinition, definition.queryParams);
+    const normalizedParams = definition.queryParams;
     const sourceId = definition.sourceId || '_local_';
+
     return {
-        id: UUID.create22(),
-        datetime_utc: `${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '')}`,
+        job: void 0 as any,
         key: `${sourceId}/${definition.entryId}`,
         sourceId,
         entryId: definition.entryId,
         queryDefinition,
         normalizedParams,
-        responseFormat: { isBinary: !!(definition.options && definition.options.binary) },
-        modelNums: definition.options && definition.options.modelNums,
+        modelNums: definition.modelNums,
+        copyAllCategories: !!definition.copyAllCategories
+    };
+}
+
+export function createJob(definition: JobDefinition): Job {
+    const job: Job = {
+        id: UUID.create22(),
+        datetime_utc: `${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '')}`,
+        entries: definition.entries,
+        writer: definition.writer,
+        responseFormat: { isBinary: !!(definition.options && definition.options.binary), tarball: !!definition?.options?.tarball },
         outputFilename: definition.options && definition.options.outputFilename
     };
+    definition.entries.forEach(e => e.job = job);
+    return job;
 }
 
 class _JobQueue {
@@ -63,7 +92,7 @@ class _JobQueue {
         return this.list.count;
     }
 
-    add<Name extends QueryName>(definition: JobDefinition<Name>) {
+    add(definition: JobDefinition) {
         const job = createJob(definition);
         this.list.addLast(job);
         return job.id;
@@ -86,7 +115,7 @@ class _JobQueue {
             jobs[jobs.length] = j.value;
         }
 
-        jobs.sort((a, b) => a.key < b.key ? -1 : 1);
+        jobs.sort((a, b) => a.entries[0]?.key < b.entries[0]?.key ? -1 : 1);
 
         this.list = LinkedList();
         for (const j of jobs) {

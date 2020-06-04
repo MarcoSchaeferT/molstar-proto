@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 /**
@@ -22,10 +23,10 @@
  *
  */
 
-import * as Data from '../data-model'
-import { Tokens, TokenBuilder } from '../../common/text/tokenizer'
-import { ReaderResult as Result } from '../../result'
-import { Task, RuntimeContext, chunkedSubtask } from 'mol-task'
+import * as Data from '../data-model';
+import { Tokens, TokenBuilder, Tokenizer } from '../../common/text/tokenizer';
+import { ReaderResult as Result } from '../../result';
+import { Task, RuntimeContext, chunkedSubtask } from '../../../../mol-task';
 
 /**
  * Types of supported mmCIF tokens.
@@ -46,6 +47,8 @@ interface TokenizerState {
     position: number,
     length: number,
     isEscaped: boolean,
+    isImportGet: boolean,
+    inSaveFrame: boolean,
 
     lineNumber: number,
     tokenType: CifTokenType,
@@ -129,6 +132,28 @@ function eatEscaped(state: TokenizerState, esc: number) {
 }
 
 /**
+ * Eats an escaped value "triple quote" (''') value.
+ */
+function eatTripleQuote(state: TokenizerState) {
+    // skip the '''
+    state.position += 3;
+    while (state.position < state.length) {
+        if (state.data.charCodeAt(state.position) === 39 /* ' */ && isTripleQuoteAtPosition(state)) {
+            // get rid of the quotes.
+            state.tokenStart += 3;
+            state.tokenEnd = state.position;
+            state.isEscaped = true;
+            state.position += 3;
+            return;
+        }
+
+        ++state.position;
+    }
+
+    state.tokenEnd = state.position;
+}
+
+/**
  * Eats a multiline token of the form NL;....NL;
  */
 function eatMultiline(state: TokenizerState) {
@@ -166,6 +191,23 @@ function eatMultiline(state: TokenizerState) {
 
     state.position = pos;
     return prev;
+}
+
+function eatImportGet(state: TokenizerState) {
+    // _import.get [{'save':orient_matrix  'file':templ_attr.cif}]
+    // skipWhitespace(state)
+    while (state.position < state.length) {
+        switch (state.data.charCodeAt(state.position)) {
+            case 93:  // ]
+                ++state.position;
+                state.tokenEnd = state.position;
+                state.isImportGet = false;
+                return;
+            default:
+                ++state.position;
+                break;
+        }
+    }
 }
 
 /**
@@ -213,6 +255,18 @@ function skipWhitespace(state: TokenizerState): number {
         }
     }
     return prev;
+}
+
+
+/**
+ * Returns true if there are two consecutive ' in +1 and +2 positions.
+ */
+function isTripleQuoteAtPosition(state: TokenizerState): boolean {
+    if (state.length - state.position < 2) return false;
+    if (state.data.charCodeAt(state.position + 1) !== 39) return false; // '
+    if (state.data.charCodeAt(state.position + 2) !== 39) return false; // '
+
+    return true;
 }
 
 function isData(state: TokenizerState): boolean {
@@ -274,6 +328,25 @@ function isLoop(state: TokenizerState): boolean {
     return true;
 }
 
+function isImportGet(state: TokenizerState): boolean {
+    // _import.get [{'save':orient_matrix  'file':templ_attr.cif}]
+
+    if (state.tokenEnd - state.tokenStart !== 11) return false;
+
+    if (state.data.charCodeAt(state.tokenStart + 1) !== 105) return false; // i
+    if (state.data.charCodeAt(state.tokenStart + 2) !== 109) return false; // m
+    if (state.data.charCodeAt(state.tokenStart + 3) !== 112) return false; // p
+    if (state.data.charCodeAt(state.tokenStart + 4) !== 111) return false; // o
+    if (state.data.charCodeAt(state.tokenStart + 5) !== 114) return false; // r
+    if (state.data.charCodeAt(state.tokenStart + 6) !== 116) return false; // t
+    if (state.data.charCodeAt(state.tokenStart + 7) !== 46) return false; // .
+    if (state.data.charCodeAt(state.tokenStart + 8) !== 103) return false; // g
+    if (state.data.charCodeAt(state.tokenStart + 9) !== 101) return false; // e
+    if (state.data.charCodeAt(state.tokenStart + 10) !== 116) return false; // t
+
+    return true;
+}
+
 /**
  * Checks if the current token shares the namespace with string at <start,end).
  */
@@ -316,6 +389,17 @@ function getNamespace(state: TokenizerState, endIndex: number) {
 }
 
 /**
+ * Returns true if the current token contain no '.', otherwise returns false.
+ */
+function isFlatNamespace(state: TokenizerState): boolean {
+    let i: number;
+    for (i = state.tokenStart; i < state.tokenEnd; ++i) {
+        if (state.data.charCodeAt(i) === 46) return false;
+    }
+    return true;
+}
+
+/**
  * String representation of the current token.
  */
 function getTokenString(state: TokenizerState) {
@@ -336,14 +420,20 @@ function moveNextInternal(state: TokenizerState) {
     state.tokenStart = state.position;
     state.tokenEnd = state.position;
     state.isEscaped = false;
+
     let c = state.data.charCodeAt(state.position);
     switch (c) {
         case 35: // #, comment
             skipCommentLine(state);
             state.tokenType = CifTokenType.Comment;
             break;
-        case 34: // ", escaped value
         case 39: // ', escaped value
+            if (isTripleQuoteAtPosition(state)) {
+                eatTripleQuote(state);
+                state.tokenType = CifTokenType.Value;
+                break;
+            }
+        case 34: // ", escaped value
             eatEscaped(state, c);
             state.tokenType = CifTokenType.Value;
             break;
@@ -357,20 +447,28 @@ function moveNextInternal(state: TokenizerState) {
             state.tokenType = CifTokenType.Value;
             break;
         default:
-            eatValue(state);
+            if (state.isImportGet) {
+                eatImportGet(state);
+            } else {
+                eatValue(state);
+            }
+
             // escaped is always Value
             if (state.isEscaped) {
                 state.tokenType = CifTokenType.Value;
-                // _ always means column name
+            // _ means column name, including _import.get
             } else if (state.data.charCodeAt(state.tokenStart) === 95) { // _
+                if (state.inSaveFrame && isImportGet(state)) {
+                    state.isImportGet = true;
+                }
                 state.tokenType = CifTokenType.ColumnName;
-                // 5th char needs to be _ for data_ or loop_
+            // 5th char needs to be _ for data_, save_ or loop_
             } else if (state.tokenEnd - state.tokenStart >= 5 && state.data.charCodeAt(state.tokenStart + 4) === 95) {
                 if (isData(state)) state.tokenType = CifTokenType.Data;
                 else if (isSave(state)) state.tokenType = CifTokenType.Save;
                 else if (isLoop(state)) state.tokenType = CifTokenType.Loop;
                 else state.tokenType = CifTokenType.Value;
-                // all other tests failed, we are at Value token.
+            // all other tests failed, we are at Value token.
             } else {
                 state.tokenType = CifTokenType.Value;
             }
@@ -396,6 +494,8 @@ function createTokenizer(data: string, runtimeCtx: RuntimeContext): TokenizerSta
         tokenType: CifTokenType.End,
         lineNumber: 1,
         isEscaped: false,
+        isImportGet: false,
+        inSaveFrame: false,
 
         runtimeCtx
     };
@@ -410,13 +510,48 @@ interface CifCategoryResult {
     errorMessage: string;
 }
 
+interface CifCategoryData {
+    name: string,
+    rowCount: number,
+    fieldNames: string[],
+    fields: { [name: string]: Data.CifField }
+}
+
 type FrameContext = {
     categoryNames: string[],
-    categories: { [name: string]: Data.CifCategory }
+    categoryData: { [name: string]: CifCategoryData }
 }
 
 function FrameContext(): FrameContext {
-    return { categoryNames: [], categories: Object.create(null) };
+    return { categoryNames: [], categoryData: Object.create(null) };
+}
+
+function CifCategories(categoryNames: string[], categoryData: { [name: string]: CifCategoryData }): { [name: string]: Data.CifCategory } {
+    const categories = Object.create(null);
+    for (const name of categoryNames) {
+        const d = categoryData[name];
+        categories[name] = Data.CifCategory(d.name, d.rowCount, d.fieldNames, d.fields);
+    }
+    return categories;
+}
+
+function CifBlock(ctx: FrameContext, header: string, saveFrames?: Data.CifFrame[]): Data.CifBlock {
+    return Data.CifBlock(ctx.categoryNames, CifCategories(ctx.categoryNames, ctx.categoryData), header, saveFrames);
+}
+
+function CifSaveFrame(ctx: FrameContext, header: string): Data.CifBlock {
+    return Data.CifBlock(ctx.categoryNames, CifCategories(ctx.categoryNames, ctx.categoryData), header);
+}
+
+function addFields(ctx: FrameContext, name: string, rowCount: number, fieldNames: string[], fields: { [k: string]: Data.CifField }) {
+    if (name in ctx.categoryData) {
+        const cat = ctx.categoryData[name];
+        cat.fieldNames.push(...fieldNames);
+        Object.assign(cat.fields, fields);
+    } else {
+        ctx.categoryData[name] = { name, rowCount, fieldNames, fields };
+        ctx.categoryNames.push(name);
+    }
 }
 
 /**
@@ -442,16 +577,14 @@ function handleSingle(tokenizer: TokenizerState, ctx: FrameContext): CifCategory
                 hasError: true,
                 errorLine: tokenizer.lineNumber,
                 errorMessage: 'Expected value.'
-            }
+            };
         }
         fields[fieldName] = Data.CifField.ofTokens({ data: tokenizer.data, indices: [tokenizer.tokenStart, tokenizer.tokenEnd], count: 1 });
         fieldNames[fieldNames.length] = fieldName;
         moveNext(tokenizer);
     }
 
-    const catName = name.substr(1);
-    ctx.categories[catName] = Data.CifCategory(catName, 1, fieldNames, fields);
-    ctx.categoryNames.push(catName);
+    addFields(ctx, name.substr(1), 1, fieldNames, fields);
 
     return {
         hasError: false,
@@ -496,10 +629,13 @@ async function handleLoop(tokenizer: TokenizerState, ctx: FrameContext): Promise
 
     moveNext(tokenizer);
     const name = getNamespace(tokenizer, getNamespaceEnd(tokenizer));
+    const isFlat = isFlatNamespace(tokenizer);
     const fieldNames: string[] = [];
 
     while (tokenizer.tokenType === CifTokenType.ColumnName) {
-        fieldNames[fieldNames.length] = getTokenString(tokenizer).substring(name.length + 1);
+        fieldNames[fieldNames.length] = isFlat
+            ? getTokenString(tokenizer)
+            : getTokenString(tokenizer).substring(name.length + 1);
         moveNext(tokenizer);
     }
 
@@ -526,14 +662,19 @@ async function handleLoop(tokenizer: TokenizerState, ctx: FrameContext): Promise
     }
 
     const rowCount = (state.tokenCount / fieldCount) | 0;
-    const fields = Object.create(null);
-    for (let i = 0; i < fieldCount; i++) {
-        fields[fieldNames[i]] = Data.CifField.ofTokens(tokens[i]);
-    }
+    if (isFlat) {
+        for (let i = 0; i < fieldCount; i++) {
+            const fields = { '': Data.CifField.ofTokens(tokens[i]) };
+            addFields(ctx, fieldNames[i].substr(1), rowCount, [''], fields);
+        }
+    } else {
+        const fields = Object.create(null);
+        for (let i = 0; i < fieldCount; i++) {
+            fields[fieldNames[i]] = Data.CifField.ofTokens(tokens[i]);
+        }
 
-    const catName = name.substr(1);
-    ctx.categories[catName] = Data.CifCategory(catName, rowCount, fieldNames, fields);
-    ctx.categoryNames.push(catName);
+        addFields(ctx, name.substr(1), rowCount, fieldNames, fields);
+    }
 
     return {
         hasError: false,
@@ -568,12 +709,14 @@ async function parseInternal(data: string, runtimeCtx: RuntimeContext) {
 
     let blockCtx = FrameContext();
 
-    let inSaveFrame = false;
-
     // the next three initial values are never used in valid files
     let saveFrames: Data.CifFrame[] = [];
     let saveCtx = FrameContext();
-    let saveFrame: Data.CifFrame = Data.CifSafeFrame(saveCtx.categoryNames, saveCtx.categories, '');
+    let saveFrame: Data.CifFrame = Data.CifSaveFrame(
+        saveCtx.categoryNames, CifCategories(saveCtx.categoryNames, saveCtx.categoryData), ''
+    );
+
+    let saveHeader = '';
 
     runtimeCtx.update({ message: 'Parsing...', current: 0, max: data.length });
 
@@ -583,59 +726,59 @@ async function parseInternal(data: string, runtimeCtx: RuntimeContext) {
 
         // Data block
         if (token === CifTokenType.Data) {
-            if (inSaveFrame) {
+            if (tokenizer.inSaveFrame) {
                 return error(tokenizer.lineNumber, 'Unexpected data block inside a save frame.');
             }
             if (blockCtx.categoryNames.length > 0) {
-                dataBlocks.push(Data.CifBlock(blockCtx.categoryNames, blockCtx.categories, blockHeader, saveFrames));
+                dataBlocks.push(CifBlock(blockCtx, blockHeader, saveFrames));
             }
             blockHeader = data.substring(tokenizer.tokenStart + 5, tokenizer.tokenEnd);
             blockCtx = FrameContext();
-            saveFrames = []
+            saveFrames = [];
             moveNext(tokenizer);
         // Save frame
         } else if (token === CifTokenType.Save) {
-            const saveHeader = data.substring(tokenizer.tokenStart + 5, tokenizer.tokenEnd);
-            if (saveHeader.length === 0) {
+            if (tokenizer.tokenEnd - tokenizer.tokenStart === 5) { // end of save frame
                 if (saveCtx.categoryNames.length > 0) {
-                    saveFrames[saveFrames.length] = saveFrame;
+                    saveFrames[saveFrames.length] = CifSaveFrame(saveCtx, saveHeader);
                 }
-                inSaveFrame = false;
-            } else {
-                if (inSaveFrame) {
+                tokenizer.inSaveFrame = false;
+            } else { // start of save frame
+                if (tokenizer.inSaveFrame) {
                     return error(tokenizer.lineNumber, 'Save frames cannot be nested.');
                 }
-                inSaveFrame = true;
-                const safeHeader = data.substring(tokenizer.tokenStart + 5, tokenizer.tokenEnd);
+                tokenizer.inSaveFrame = true;
+                saveHeader = data.substring(tokenizer.tokenStart + 5, tokenizer.tokenEnd);
                 saveCtx = FrameContext();
-                saveFrame = Data.CifSafeFrame(saveCtx.categoryNames, saveCtx.categories, safeHeader);
+                // saveFrame = CifSaveFrame(saveCtx, saveHeader);
             }
             moveNext(tokenizer);
         // Loop
         } else if (token === CifTokenType.Loop) {
-            const cat = await handleLoop(tokenizer, inSaveFrame ? saveCtx : blockCtx);
+            const cat = await handleLoop(tokenizer, tokenizer.inSaveFrame ? saveCtx : blockCtx);
             if (cat.hasError) {
                 return error(cat.errorLine, cat.errorMessage);
             }
         // Single row
         } else if (token === CifTokenType.ColumnName) {
-            const cat = handleSingle(tokenizer, inSaveFrame ? saveCtx : blockCtx);
+            const cat = handleSingle(tokenizer, tokenizer.inSaveFrame ? saveCtx : blockCtx);
             if (cat.hasError) {
                 return error(cat.errorLine, cat.errorMessage);
             }
         // Out of options
         } else {
+            console.log(tokenizer.tokenType, Tokenizer.getTokenString(tokenizer));
             return error(tokenizer.lineNumber, 'Unexpected token. Expected data_, loop_, or data name.');
         }
     }
 
     // Check if the latest save frame was closed.
-    if (inSaveFrame) {
+    if (tokenizer.inSaveFrame) {
         return error(tokenizer.lineNumber, `Unfinished save frame (${saveFrame.header}).`);
     }
 
     if (blockCtx.categoryNames.length > 0 || saveFrames.length > 0) {
-        dataBlocks.push(Data.CifBlock(blockCtx.categoryNames, blockCtx.categories, blockHeader, saveFrames));
+        dataBlocks.push(CifBlock(blockCtx, blockHeader, saveFrames));
     }
 
     return result(Data.CifFile(dataBlocks));

@@ -1,10 +1,10 @@
-import { NumberArray } from 'mol-util/type-helpers';
-
 /**
  * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
+
+import { NumberArray } from '../../../mol-util/type-helpers';
 
 /*
  * This code has been modified from https://github.com/toji/gl-matrix/,
@@ -19,6 +19,10 @@ import { NumberArray } from 'mol-util/type-helpers';
  */
 
 interface Vec2 extends Array<number> { [d: number]: number, '@type': 'vec2', length: 2 }
+
+function Vec2() {
+    return Vec2.zero();
+}
 
 namespace Vec2 {
     export function zero(): Vec2 {
@@ -43,18 +47,19 @@ namespace Vec2 {
     }
 
     export function hasNaN(a: Vec2) {
-        return isNaN(a[0]) || isNaN(a[1])
+        return isNaN(a[0]) || isNaN(a[1]);
     }
 
     export function toArray(a: Vec2, out: NumberArray, offset: number) {
         out[offset + 0] = a[0];
         out[offset + 1] = a[1];
+        return out;
     }
 
     export function fromArray(a: Vec2, array: NumberArray, offset: number) {
-        a[0] = array[offset + 0]
-        a[1] = array[offset + 1]
-        return a
+        a[0] = array[offset + 0];
+        a[1] = array[offset + 1];
+        return a;
     }
 
     export function copy(out: Vec2, a: Vec2) {
@@ -162,6 +167,10 @@ namespace Vec2 {
     export function areEqual(a: Vec2, b: Vec2) {
         return a[0] === b[0] && a[1] === b[1];
     }
+
+    export function toString(a: Vec2, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)}}]`;
+    }
 }
 
-export default Vec2
+export default Vec2;

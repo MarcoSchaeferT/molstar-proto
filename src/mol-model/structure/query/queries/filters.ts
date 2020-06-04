@@ -4,17 +4,17 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { SetUtils } from 'mol-util/set';
+import { SetUtils } from '../../../../mol-util/set';
 import { Unit } from '../../structure';
 import { QueryContext, QueryFn, QueryPredicate } from '../context';
 import { StructureQuery } from '../query';
 import { StructureSelection } from '../selection';
 import { structureAreIntersecting } from '../utils/structure-set';
-import { Vec3 } from 'mol-math/linear-algebra';
+import { Vec3 } from '../../../../mol-math/linear-algebra';
 import { checkStructureMaxRadiusDistance, checkStructureMinMaxDistance } from '../utils/structure-distance';
 import Structure from '../../structure/structure';
 import StructureElement from '../../structure/element';
-import { SortedArray } from 'mol-data/int';
+import { SortedArray } from '../../../../mol-data/int';
 
 export function pick(query: StructureQuery, pred: QueryPredicate): StructureQuery {
     return ctx => {
@@ -31,12 +31,32 @@ export function pick(query: StructureQuery, pred: QueryPredicate): StructureQuer
     };
 }
 
+export function first(query: StructureQuery): StructureQuery {
+    return ctx => {
+        const sel = query(ctx);
+        const ret = StructureSelection.LinearBuilder(ctx.inputStructure);
+        if (sel.kind === 'singletons') {
+            if (sel.structure.elementCount > 0) {
+                const u = sel.structure.units[0];
+                const s = Structure.create([u.getChild(SortedArray.ofSingleton(u.elements[0]))], { parent: ctx.inputStructure });
+                ret.add(s);
+            }
+        } else {
+            if (sel.structures.length > 0) {
+                ret.add(sel.structures[0]);
+            }
+        }
+        return ret.getSelection();
+    };
+}
+
 export interface UnitTypeProperties { atomic?: QueryFn, coarse?: QueryFn }
 
 export function getCurrentStructureProperties(ctx: QueryContext, props: UnitTypeProperties, set: Set<any>) {
     const { units } = ctx.currentStructure;
     const l = ctx.pushCurrentElement();
 
+    l.structure = ctx.currentStructure;
     for (const unit of units) {
         l.unit = unit;
         const elements = unit.elements;
@@ -125,7 +145,7 @@ export function within(params: WithinParams): StructureQuery {
             minRadius: params.minRadius ? Math.max(0, params.minRadius) : 0,
             elementRadius: params.elementRadius!,
             invert: !!params.invert,
-        }
+        };
 
         if (ctx.minRadius === 0 && typeof params.minRadius === 'undefined') {
             return withinMaxRadiusLookup(ctx);
@@ -134,7 +154,7 @@ export function within(params: WithinParams): StructureQuery {
         } else {
             return withinMinMaxRadius(ctx);
         }
-    }
+    };
 }
 
 interface WithinContext {
@@ -210,26 +230,27 @@ function withinMinMaxRadius({ queryCtx, selection, target, minRadius, maxRadius,
 
 interface IsConnectedToCtx {
     queryCtx: QueryContext,
+    disjunct: boolean,
     input: Structure,
-    target: Structure,
-    bondTest: QueryFn<boolean>,
-    tElement: StructureElement
+    target: Structure
 }
 
 function checkConnected(ctx: IsConnectedToCtx, structure: Structure) {
-    const { queryCtx, input, target, bondTest, tElement } = ctx;
+    const { queryCtx, input, target, disjunct } = ctx;
+    const atomicBond = queryCtx.atomicBond;
 
-    const interLinks = input.links;
+    const interBonds = input.interUnitBonds;
+
+    atomicBond.setStructure(input);
+
     for (const unit of structure.units) {
         if (!Unit.isAtomic(unit)) continue;
 
         const inputUnit = input.unitMap.get(unit.id) as Unit.Atomic;
 
-        const { offset, b } = inputUnit.links;
-        const linkedUnits = interLinks.getLinkedUnits(unit);
-        const luCount = linkedUnits.length;
-
-        queryCtx.atomicLink.aUnit = inputUnit;
+        const { offset, b, edgeProps: { flags, order } } = inputUnit.bonds;
+        const bondedUnits = interBonds.getConnectedUnits(unit);
+        const buCount = bondedUnits.length;
 
         const srcElements = unit.elements;
         const inputElements = inputUnit.elements;
@@ -237,29 +258,43 @@ function checkConnected(ctx: IsConnectedToCtx, structure: Structure) {
         for (let i = 0 as StructureElement.UnitIndex, _i = srcElements.length; i < _i; i++) {
             const inputIndex = SortedArray.indexOf(inputElements, srcElements[i]) as StructureElement.UnitIndex;
 
-            queryCtx.atomicLink.aIndex = inputIndex;
-            queryCtx.atomicLink.bUnit = inputUnit;
+            atomicBond.a.unit = inputUnit;
+            atomicBond.b.unit = inputUnit;
 
-            tElement.unit = unit;
+            // tElement.unit = unit;
             for (let l = offset[inputIndex], _l = offset[inputIndex + 1]; l < _l; l++) {
-                tElement.element = inputElements[b[l]];
-                if (!target.hasElement(tElement)) continue;
-                queryCtx.atomicLink.bIndex = b[l] as StructureElement.UnitIndex;
-                if (bondTest(queryCtx)) return true;
+                // tElement.element = inputElements[b[l]];
+                atomicBond.b.element = inputUnit.elements[b[l]];
+                if (disjunct && SortedArray.has(unit.elements, atomicBond.b.element)) continue;
+                if (!target.hasElement(atomicBond.b)) continue;
+
+                atomicBond.aIndex = inputIndex;
+                atomicBond.a.element = srcElements[i];
+                atomicBond.bIndex = b[l] as StructureElement.UnitIndex;
+                atomicBond.type = flags[l];
+                atomicBond.order = order[l];
+                if (atomicBond.test(queryCtx, true)) return true;
             }
 
-            for (let li = 0; li < luCount; li++) {
-                const lu = linkedUnits[li];
-                tElement.unit = lu.unitB;
-                queryCtx.atomicLink.bUnit = lu.unitB;
+            for (let li = 0; li < buCount; li++) {
+                const lu = bondedUnits[li];
                 const bElements = lu.unitB.elements;
-                const bonds = lu.getBonds(inputIndex);
+                const bonds = lu.getEdges(inputIndex);
                 for (let bi = 0, _bi = bonds.length; bi < _bi; bi++) {
                     const bond = bonds[bi];
-                    tElement.element = bElements[bond.indexB];
-                    if (!target.hasElement(tElement)) continue;
-                    queryCtx.atomicLink.bIndex = bond.indexB;
-                    if (bondTest(queryCtx)) return true;
+                    atomicBond.b.unit = lu.unitB;
+                    atomicBond.b.element = bElements[bond.indexB];
+                    if (!target.hasElement(atomicBond.b)) continue;
+                    if (disjunct && structure.hasElement(atomicBond.b)) continue;
+
+                    atomicBond.a.unit = inputUnit;
+                    atomicBond.aIndex = inputIndex;
+                    atomicBond.a.element = srcElements[i];
+
+                    atomicBond.bIndex = bond.indexB;
+                    atomicBond.type = bond.props.flag;
+                    atomicBond.order = bond.props.order;
+                    if (atomicBond.test(queryCtx, true)) return true;
                 }
             }
         }
@@ -276,10 +311,6 @@ export interface IsConnectedToParams {
     invert: boolean
 }
 
-function defaultBondTest(ctx: QueryContext) {
-    return true;
-}
-
 export function isConnectedTo({ query, target, disjunct, invert, bondTest }: IsConnectedToParams): StructureQuery {
     return ctx => {
         const targetSel = target(ctx);
@@ -290,19 +321,24 @@ export function isConnectedTo({ query, target, disjunct, invert, bondTest }: IsC
         const connCtx: IsConnectedToCtx = {
             queryCtx: ctx,
             input: ctx.inputStructure,
-            target: StructureSelection.unionStructure(targetSel),
-            bondTest: bondTest || defaultBondTest,
-            tElement: StructureElement.create()
-        }
+            disjunct,
+            target: StructureSelection.unionStructure(targetSel)
+        };
 
         const ret = StructureSelection.LinearBuilder(ctx.inputStructure);
-        ctx.pushCurrentLink();
+        ctx.pushCurrentBond();
+        ctx.atomicBond.setTestFn(bondTest);
+
         StructureSelection.forEach(selection, (s, sI) => {
-            if (checkConnected(connCtx, s)) ret.add(s);
+            if (checkConnected(connCtx, s)) {
+                ret.add(s);
+            } else if (invert) {
+                ret.add(s);
+            }
             if (sI % 5 === 0) ctx.throwIfTimedOut();
-        })
-        ctx.popCurrentLink();
+        });
+        ctx.popCurrentBond();
 
         return ret.getSelection();
-    }
+    };
 }

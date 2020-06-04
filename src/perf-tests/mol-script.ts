@@ -1,15 +1,16 @@
-import { MolScriptBuilder } from 'mol-script/language/builder';
-import { compile, QuerySymbolRuntime, DefaultQueryRuntimeTable } from 'mol-script/runtime/query/compiler';
-import { QueryContext, Structure, StructureQuery, ModelPropertyDescriptor } from 'mol-model/structure';
-import { readCifFile, getModelsAndStructure } from '../apps/structure-info/model';
-import { CustomPropSymbol } from 'mol-script/language/symbol';
-import Type from 'mol-script/language/type';
-import { parseMolScript } from 'mol-script/language/parser';
-import * as util from 'util'
-import { transpileMolScript } from 'mol-script/script/mol-script/symbols';
-import { formatMolScript } from 'mol-script/language/expression-formatter';
-import { StructureQualityReport } from 'mol-model-props/pdbe/structure-quality-report';
+import { MolScriptBuilder } from '../mol-script/language/builder';
+import { compile, QuerySymbolRuntime, DefaultQueryRuntimeTable } from '../mol-script/runtime/query/compiler';
+import { QueryContext, Structure, StructureQuery } from '../mol-model/structure';
+import { readCifFile, getModelsAndStructure } from '../cli/structure-info/model';
+import { CustomPropSymbol } from '../mol-script/language/symbol';
+import Type from '../mol-script/language/type';
+import { parseMolScript } from '../mol-script/language/parser';
+import * as util from 'util';
+import { transpileMolScript } from '../mol-script/script/mol-script/symbols';
+import { formatMolScript } from '../mol-script/language/expression-formatter';
+import { StructureQualityReport, StructureQualityReportProvider } from '../extensions/pdbe/structure-quality-report/prop';
 import fetch from 'node-fetch';
+import { CustomPropertyDescriptor } from '../mol-model/custom-property';
 
 // import Examples from 'mol-script/script/mol-script/examples'
 // import { parseMolScript } from 'mol-script/script/mol-script/parser'
@@ -46,9 +47,8 @@ const compiled = compile<number>(expr);
 const result = compiled(new QueryContext(Structure.Empty));
 console.log(result);
 
-const CustomProp = ModelPropertyDescriptor({
+const CustomProp = CustomPropertyDescriptor({
     name: 'test_prop',
-    isStatic: true,
     cifExport: { prefix: '', categories: [ ]},
     symbols: {
         residueIndex: QuerySymbolRuntime.Dynamic(CustomPropSymbol('custom.test-prop', 'residue-index', Type.Num), ctx => {
@@ -61,18 +61,17 @@ const CustomProp = ModelPropertyDescriptor({
 
 DefaultQueryRuntimeTable.addCustomProp(CustomProp);
 
-DefaultQueryRuntimeTable.addCustomProp(StructureQualityReport.Descriptor);
+DefaultQueryRuntimeTable.addCustomProp(StructureQualityReportProvider.descriptor);
 
 export async function testQ() {
     const frame = await readCifFile('e:/test/quick/1cbs_updated.cif');
     const { structure } = await getModelsAndStructure(frame);
+    const model = structure.models[0];
 
-    await StructureQualityReport.attachFromCifOrApi(structure.models[0], {
-        PDBe_apiSourceJson: async model => {
-            const rawData = await fetch(`https://www.ebi.ac.uk/pdbe/api/validation/residuewise_outlier_summary/entry/${model.label.toLowerCase()}`, { timeout: 1500 });
-            return await rawData.json();
-        }
-    })
+    const rawData = await fetch(`https://www.ebi.ac.uk/pdbe/api/validation/residuewise_outlier_summary/entry/${model.entryId.toLowerCase()}`, { timeout: 1500 });
+    const data = StructureQualityReport.fromJson(model, await rawData.json());
+
+    StructureQualityReportProvider.set(model, { serverUrl: '' }, data);
 
     let expr = MolScriptBuilder.struct.generator.atomGroups({
         'atom-test': MolScriptBuilder.core.rel.eq([

@@ -4,15 +4,15 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Structure } from '../structure'
-import { StructureSelection } from './selection'
-import { QueryContext, QueryFn } from './context';
+import { Structure } from '../structure';
+import { StructureSelection } from './selection';
+import { QueryContext, QueryFn, QueryContextOptions } from './context';
 
 interface StructureQuery extends QueryFn<StructureSelection> { }
 namespace StructureQuery {
-    export function run(query: StructureQuery, structure: Structure, timeoutMs = 0) {
-        return query(new QueryContext(structure, timeoutMs));
+    export function run(query: StructureQuery, structure: Structure, options?: QueryContextOptions) {
+        return query(new QueryContext(structure, options));
     }
 }
 
-export { StructureQuery }
+export { StructureQuery };

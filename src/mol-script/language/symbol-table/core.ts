@@ -4,9 +4,9 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import Type from '../type'
-import { MSymbol, Arguments, Argument } from '../symbol'
-import { symbol, normalizeTable, symbolList } from '../helpers'
+import Type from '../type';
+import { MSymbol, Arguments, Argument } from '../symbol';
+import { symbol, normalizeTable, symbolList } from '../helpers';
 
 export namespace Types {
     export type List<T = any> = ArrayLike<T>
@@ -44,11 +44,11 @@ function binRel<A extends Type, T extends Type>(src: A, target: T, description?:
 export const TTargs = Arguments.Dictionary({
     0: Argument(Type.Num),
     1: Argument(Type.Num)
-})
+});
 
 const XX = { test: Argument(Type.Str) };
 const t: Arguments.PropTypes<typeof XX> = 0 as any;
-t.test
+t.test;
 
 const type = {
     '@header': 'Types',
@@ -121,6 +121,7 @@ const math = {
     roundInt: unaryOp(Type.Num),
     abs: unaryOp(Type.Num),
     sqrt: unaryOp(Type.Num),
+    cbrt: unaryOp(Type.Num),
     sin: unaryOp(Type.Num),
     cos: unaryOp(Type.Num),
     tan: unaryOp(Type.Num),
@@ -144,7 +145,8 @@ const str = {
 
 const list = {
     '@header': 'Lists',
-    getAt: symbol(Arguments.Dictionary({ 0: Argument(Types.List()), 1: Argument(Type.Num) }), Types.AnyVar)
+    getAt: symbol(Arguments.Dictionary({ 0: Argument(Types.List()), 1: Argument(Type.Num) }), Types.AnyVar),
+    equal: symbol(Arguments.Dictionary({ 0: Argument(Types.List()), 1: Argument(Types.List()) }), Type.Bool)
 };
 
 const set = {
@@ -163,7 +165,7 @@ const flags = {
         0: Argument(Types.Flags(Types.ConstrainedVar)),
         1: Argument(Types.Flags(Types.ConstrainedVar))
     }), Type.Bool, 'Check if the the 1st argument has all 2nd one\'s flags.'),
-}
+};
 
 const table = {
     '@header': 'Language Primitives',
@@ -176,7 +178,7 @@ const table = {
     list,
     set,
     flags
-}
+};
 
 normalizeTable(table);
 
@@ -189,5 +191,3 @@ export const SymbolMap = (function() {
 })();
 
 export default table;
-
-

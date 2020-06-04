@@ -1,28 +1,33 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { RepresentationProvider, RepresentationRegistry, Representation } from '../representation';
-import { VolumeData } from 'mol-model/volume';
+import { RepresentationRegistry, Representation, RepresentationProvider } from '../representation';
+import { Volume } from '../../mol-model/volume';
 import { IsosurfaceRepresentationProvider } from './isosurface';
-import { DirectVolumeRepresentationProvider } from './direct-volume';
+import { objectForEach } from '../../mol-util/object';
+import { SliceRepresentationProvider } from './slice';
 
-export class VolumeRepresentationRegistry extends RepresentationRegistry<VolumeData, Representation.State> {
+export class VolumeRepresentationRegistry extends RepresentationRegistry<Volume, Representation.State> {
     constructor() {
-        super()
-        Object.keys(BuiltInVolumeRepresentations).forEach(name => {
-            const p = (BuiltInVolumeRepresentations as { [k: string]: RepresentationProvider<VolumeData, any, Representation.State> })[name]
-            this.add(name, p)
-        })
+        super();
+        objectForEach(VolumeRepresentationRegistry.BuiltIn, (p, k) => {
+            if (p.name !== k) throw new Error(`Fix BuiltInVolumeRepresentations to have matching names. ${p.name} ${k}`);
+            this.add(p as any);
+        });
     }
 }
 
-export const BuiltInVolumeRepresentations = {
-    'isosurface': IsosurfaceRepresentationProvider,
-    'direct-volume': DirectVolumeRepresentationProvider,
+export namespace VolumeRepresentationRegistry {
+    export const BuiltIn = {
+        'isosurface': IsosurfaceRepresentationProvider,
+        'slice': SliceRepresentationProvider,
+        // 'direct-volume': DirectVolumeRepresentationProvider, // TODO disabled for now, needs more work
+    };
+
+    type _BuiltIn = typeof BuiltIn
+    export type BuiltIn = keyof _BuiltIn
+    export type BuiltInParams<T extends BuiltIn> = Partial<RepresentationProvider.ParamValues<_BuiltIn[T]>>
 }
-export type BuiltInVolumeRepresentationsName = keyof typeof BuiltInVolumeRepresentations
-export const BuiltInVolumeRepresentationsNames = Object.keys(BuiltInVolumeRepresentations)
-export const BuiltInVolumeRepresentationsOptions = BuiltInVolumeRepresentationsNames.map(n => [n, n] as [BuiltInVolumeRepresentationsName, string])

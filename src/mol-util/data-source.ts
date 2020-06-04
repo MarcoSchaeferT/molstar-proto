@@ -1,110 +1,198 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  *
  * Adapted from LiteMol
  */
 
-import { Task, RuntimeContext } from 'mol-task';
-import { utf8Read } from 'mol-io/common/utf8';
+import { Task, RuntimeContext } from '../mol-task';
+import { unzip, ungzip } from './zip/zip';
+import { utf8Read } from '../mol-io/common/utf8';
+import { AssetManager, Asset } from './assets';
 
-// export enum DataCompressionMethod {
-//     None,
-//     Gzip
-// }
+// polyfill XMLHttpRequest in node.js
+const XHR = typeof document === 'undefined' ? require('xhr2') as {
+    prototype: XMLHttpRequest;
+    new(): XMLHttpRequest;
+    readonly DONE: number;
+    readonly HEADERS_RECEIVED: number;
+    readonly LOADING: number;
+    readonly OPENED: number;
+    readonly UNSENT: number;
+} : XMLHttpRequest;
 
-export interface AjaxGetParams<T extends 'string' | 'binary' | 'json' = 'string'> {
+export enum DataCompressionMethod {
+    None,
+    Gzip,
+    Zip,
+}
+
+export type DataType = 'json' | 'xml' | 'string' | 'binary' | 'zip'
+export type DataValue = 'string' | any | XMLDocument | Uint8Array
+export type DataResponse<T extends DataType> =
+    T extends 'json' ? any :
+        T extends 'xml' ? XMLDocument :
+            T extends 'string' ? string :
+                T extends 'binary' ? Uint8Array :
+                    T extends 'zip' ? { [k: string]: Uint8Array } : never
+
+export interface AjaxGetParams<T extends DataType = 'string'> {
     url: string,
     type?: T,
     title?: string,
-    // compression?: DataCompressionMethod
+    headers?: [string, string][],
     body?: string
 }
 
 export function readStringFromFile(file: File) {
-    return <Task<string>>readFromFileInternal(file, false);
+    return readFromFileInternal(file, 'string');
 }
 
 export function readUint8ArrayFromFile(file: File) {
-    return <Task<Uint8Array>>readFromFileInternal(file, true);
+    return readFromFileInternal(file, 'binary');
 }
 
-export function readFromFile(file: File, type: 'string' | 'binary') {
-    return <Task<Uint8Array | string>>readFromFileInternal(file, type === 'binary');
+export function readFromFile<T extends DataType>(file: File, type: T) {
+    return readFromFileInternal(file, type);
 }
 
-// TODO: support for no-referrer
-export function ajaxGet(url: string): Task<string>
-export function ajaxGet(params: AjaxGetParams<'string'>): Task<string>
-export function ajaxGet(params: AjaxGetParams<'binary'>): Task<Uint8Array>
-export function ajaxGet<T = any>(params: AjaxGetParams<'json'>): Task<T>
-export function ajaxGet(params: AjaxGetParams<'string' | 'binary' | 'json'>): Task<string | Uint8Array | object>
-export function ajaxGet(params: AjaxGetParams<'string' | 'binary' | 'json'> | string) {
-    if (typeof params === 'string') return ajaxGetInternal(params, params, 'string', false);
-    return ajaxGetInternal(params.title, params.url, params.type || 'string', false /* params.compression === DataCompressionMethod.Gzip */, params.body);
+export function ajaxGet(url: string): Task<DataValue>
+export function ajaxGet<T extends DataType>(params: AjaxGetParams<T>): Task<DataResponse<T>>
+export function ajaxGet<T extends DataType>(params: AjaxGetParams<T> | string) {
+    if (typeof params === 'string') return ajaxGetInternal(params, params, 'string');
+    return ajaxGetInternal(params.title, params.url, params.type || 'string', params.body, params.headers);
 }
 
 export type AjaxTask = typeof ajaxGet
 
-function decompress(buffer: Uint8Array): Uint8Array {
-    // TODO
-    throw 'nyi';
-    // const gzip = new LiteMolZlib.Gunzip(new Uint8Array(buffer));
-    // return gzip.decompress();
-}
-
-async function processFile(ctx: RuntimeContext, asUint8Array: boolean, compressed: boolean, e: any) {
-    const data = (e.target as FileReader).result;
-
-    if (compressed) {
-        await ctx.update('Decompressing...');
-
-        const decompressed = decompress(new Uint8Array(data as ArrayBuffer));
-        if (asUint8Array) {
-            return decompressed;
-        } else {
-            return utf8Read(decompressed, 0, decompressed.length);
-        }
-    } else {
-        return asUint8Array ? new Uint8Array(data as ArrayBuffer) : data as string;
+function isDone(data: XMLHttpRequest | FileReader) {
+    if (data instanceof FileReader) {
+        return data.readyState === FileReader.DONE;
+    } else if (data instanceof XMLHttpRequest) {
+        return data.readyState === XMLHttpRequest.DONE;
     }
+    throw new Error('unknown data type');
 }
 
-function readData(ctx: RuntimeContext, action: string, data: XMLHttpRequest | FileReader, asUint8Array: boolean): Promise<any> {
-    return new Promise<any>((resolve, reject) => {
-        data.onerror = (e: any) => {
-            const error = (<FileReader>e.target).error;
-            reject(error ? error : 'Failed.');
+function genericError(isDownload: boolean) {
+    if (isDownload) return 'Failed to download data. Possible reasons: Resource is not available, or CORS is not allowed on the server.';
+    return 'Failed to open file.';
+}
+
+function readData<T extends XMLHttpRequest | FileReader>(ctx: RuntimeContext, action: string, data: T): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        // first check if data reading is already done
+        if (isDone(data)) {
+            const { error } = data as FileReader;
+            if (error !== null && error !== undefined) {
+                reject(error ?? genericError(data instanceof XMLHttpRequest));
+            } else {
+                resolve(data);
+            }
+            return;
+        }
+
+        let hasError = false;
+
+        data.onerror = (e: ProgressEvent) => {
+            if (hasError) return;
+
+            const { error } = e.target as FileReader;
+            reject(error ?? genericError(data instanceof XMLHttpRequest));
         };
 
-        data.onabort = () => reject(Task.Aborted(''));
-
         data.onprogress = (e: ProgressEvent) => {
-            if (e.lengthComputable) {
-                ctx.update({ message: action, isIndeterminate: false, current: e.loaded, max: e.total });
-            } else {
-                ctx.update({ message: `${action} ${(e.loaded / 1024 / 1024).toFixed(2)} MB`, isIndeterminate: true });
+            if (!ctx.shouldUpdate || hasError) return;
+
+            try {
+                if (e.lengthComputable) {
+                    ctx.update({ message: action, isIndeterminate: false, current: e.loaded, max: e.total });
+                } else {
+                    ctx.update({ message: `${action} ${(e.loaded / 1024 / 1024).toFixed(2)} MB`, isIndeterminate: true });
+                }
+            } catch (e) {
+                hasError = true;
+                reject(e);
             }
-        }
-        data.onload = (e: any) => resolve(e);
+        };
+
+        data.onload = (e: ProgressEvent) => {
+            resolve(data);
+        };
     });
 }
 
-function readFromFileInternal(file: File, asUint8Array: boolean): Task<string | Uint8Array> {
+function getCompression(name: string) {
+    return /\.gz$/i.test(name) ? DataCompressionMethod.Gzip :
+        /\.zip$/i.test(name) ? DataCompressionMethod.Zip :
+            DataCompressionMethod.None;
+}
+
+async function decompress(ctx: RuntimeContext, data: Uint8Array, compression: DataCompressionMethod): Promise<Uint8Array> {
+    switch (compression) {
+        case DataCompressionMethod.None: return data;
+        case DataCompressionMethod.Gzip: return ungzip(ctx, data);
+        case DataCompressionMethod.Zip:
+            const parsed = await unzip(ctx, data.buffer);
+            const names = Object.keys(parsed);
+            if (names.length !== 1) throw new Error('can only decompress zip files with a single entry');
+            return parsed[names[0]] as Uint8Array;
+    }
+}
+
+async function processFile<T extends DataType>(ctx: RuntimeContext, reader: FileReader, type: T, compression: DataCompressionMethod): Promise<DataResponse<T>> {
+    const { result } = reader;
+
+    let data = result instanceof ArrayBuffer ? new Uint8Array(result) : result;
+    if (data === null) throw new Error('no data given');
+
+    if (compression !== DataCompressionMethod.None) {
+        if (!(data instanceof Uint8Array)) throw new Error('need Uint8Array for decompression');
+        const decompressed = await decompress(ctx, data, compression);
+        if (type === 'string') {
+            await ctx.update({ message: 'Decoding text...' });
+            data = utf8Read(decompressed, 0, decompressed.length);
+        } else {
+            data = decompressed;
+        }
+    }
+
+    if (type === 'binary' && data instanceof Uint8Array) {
+        return data as DataResponse<T>;
+    } else if (type === 'zip' && data instanceof Uint8Array) {
+        return await unzip(ctx, data.buffer) as DataResponse<T>;
+    } else if (type === 'string' && typeof data === 'string') {
+        return data as DataResponse<T>;
+    } else if (type === 'xml' && typeof data === 'string') {
+        const parser = new DOMParser();
+        return parser.parseFromString(data, 'application/xml') as DataResponse<T>;
+    } else if (type === 'json' && typeof data === 'string') {
+        return JSON.parse(data) as DataResponse<T>;
+    }
+    throw new Error(`could not get requested response data '${type}'`);
+}
+
+function readFromFileInternal<T extends DataType>(file: File, type: T): Task<DataResponse<T>> {
     let reader: FileReader | undefined = void 0;
     return Task.create('Read File', async ctx => {
         try {
             reader = new FileReader();
-            const isCompressed = /\.gz$/i.test(file.name);
+            // unzipping for type 'zip' handled explicitly in `processFile`
+            const compression = type === 'zip' ? DataCompressionMethod.None : getCompression(file.name);
 
-            if (isCompressed || asUint8Array) reader.readAsArrayBuffer(file);
-            else reader.readAsBinaryString(file);
+            if (type === 'binary' || type === 'zip' || compression !== DataCompressionMethod.None) {
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.readAsText(file);
+            }
 
-            ctx.update({ message: 'Opening file...', canAbort: true });
-            const e = await readData(ctx, 'Reading...', reader, asUint8Array);
-            const result = processFile(ctx, asUint8Array, isCompressed, e);
-            return result;
+            await ctx.update({ message: 'Opening file...', canAbort: true });
+            const fileReader = await readData(ctx, 'Reading...', reader);
+
+            await ctx.update({ message: 'Processing file...', canAbort: false });
+            return await processFile(ctx, fileReader, type, compression);
         } finally {
             reader = void 0;
         }
@@ -121,7 +209,7 @@ class RequestPool {
         if (this.pool.length) {
             return this.pool.pop()!;
         }
-        return new XMLHttpRequest();
+        return new XHR();
     }
 
     static emptyFunc() { }
@@ -137,76 +225,80 @@ class RequestPool {
     }
 }
 
-async function processAjax(ctx: RuntimeContext, asUint8Array: boolean, decompressGzip: boolean, e: any) {
-    const req = (e.target as XMLHttpRequest);
+function processAjax<T extends DataType>(req: XMLHttpRequest, type: T): DataResponse<T> {
     if (req.status >= 200 && req.status < 400) {
-        if (asUint8Array) {
-            const buff = new Uint8Array(e.target.response);
-            RequestPool.deposit(e.target);
+        const { response } = req;
+        RequestPool.deposit(req);
 
-            if (decompressGzip) {
-                return decompress(buff);
-            } else {
-                return buff;
-            }
+        if ((type === 'binary' || type === 'zip') && response instanceof ArrayBuffer) {
+            return new Uint8Array(response) as DataResponse<T>;
+        } else if (type === 'string' && typeof response === 'string') {
+            return response as DataResponse<T>;
+        } else if (type === 'xml' && response instanceof XMLDocument) {
+            return response as DataResponse<T>;
+        } else if (type === 'json' && typeof response === 'object') {
+            return response as DataResponse<T>;
         }
-        else {
-            const text = e.target.responseText;
-            RequestPool.deposit(e.target);
-            return text;
-        }
+        throw new Error(`could not get requested response data '${type}'`);
     } else {
-        const status = req.statusText;
-        RequestPool.deposit(e.target);
-        throw status;
+        RequestPool.deposit(req);
+        throw new Error(`Download failed with status code ${req.status}`);
     }
 }
 
-function ajaxGetInternal(title: string | undefined, url: string, type: 'json' | 'string' | 'binary', decompressGzip: boolean, body?: string): Task<string | Uint8Array> {
+function getRequestResponseType(type: DataType): XMLHttpRequestResponseType {
+    switch(type) {
+        case 'json': return 'json';
+        case 'xml': return 'document';
+        case 'string': return 'text';
+        case 'binary': return 'arraybuffer';
+        case 'zip': return 'arraybuffer';
+    }
+}
+
+function ajaxGetInternal<T extends DataType>(title: string | undefined, url: string, type: T, body?: string, headers?: [string, string][]): Task<DataResponse<T>> {
     let xhttp: XMLHttpRequest | undefined = void 0;
     return Task.create(title ? title : 'Download', async ctx => {
-        try {
-            const asUint8Array = type === 'binary';
-            if (!asUint8Array && decompressGzip) {
-                throw 'Decompress is only available when downloading binary data.';
+        xhttp = RequestPool.get();
+
+        xhttp.open(body ? 'post' : 'get', url, true);
+        if (headers) {
+            for (const [name, value] of headers) {
+                xhttp.setRequestHeader(name, value);
             }
-
-            xhttp = RequestPool.get();
-
-            xhttp.open(body ? 'post' : 'get', url, true);
-            xhttp.responseType = asUint8Array ? 'arraybuffer' : 'text';
-            xhttp.send(body);
-
-            ctx.update({ message: 'Waiting for server...', canAbort: true });
-            const e = await readData(ctx, 'Downloading...', xhttp, asUint8Array);
-            const result = await processAjax(ctx, asUint8Array, decompressGzip, e)
-
-            if (type === 'json') {
-                ctx.update({ message: 'Parsing JSON...', canAbort: false });
-                const data = JSON.parse(result);
-                return data;
-            }
-
-            return result;
-        } finally {
-            xhttp = void 0;
         }
+        xhttp.responseType = getRequestResponseType(type);
+        xhttp.send(body);
+
+        await ctx.update({ message: 'Waiting for server...', canAbort: true });
+        const req = await readData(ctx, 'Downloading...', xhttp);
+        xhttp = void 0; // guard against reuse, help garbage collector
+
+        await ctx.update({ message: 'Parsing response...', canAbort: false });
+        const result = processAjax(req, type);
+
+        return result;
     }, () => {
-        if (xhttp) xhttp.abort();
+        if (xhttp) {
+            xhttp.abort();
+            xhttp = void 0; // guard against reuse, help garbage collector
+        }
     });
 }
 
-export type AjaxGetManyEntry<T> = { kind: 'ok', id: string, result: T } | { kind: 'error', id: string, error: any }
-export async function ajaxGetMany(ctx: RuntimeContext, sources: { id: string, url: string, isBinary?: boolean, canFail?: boolean }[], maxConcurrency: number) {
+export type AjaxGetManyEntry = { kind: 'ok', id: string, result: Asset.Wrapper<'string' | 'binary'> } | { kind: 'error', id: string, error: any }
+export async function ajaxGetMany(ctx: RuntimeContext, assetManager: AssetManager, sources: { id: string, url: Asset.Url | string, isBinary?: boolean, canFail?: boolean }[], maxConcurrency: number) {
     const len = sources.length;
-    const slots: AjaxGetManyEntry<string | Uint8Array>[] = new Array(sources.length);
+    const slots: AjaxGetManyEntry[] = new Array(sources.length);
 
     await ctx.update({ message: 'Downloading...', current: 0, max: len });
-    let promises: Promise<AjaxGetManyEntry<any> & { index: number }>[] = [], promiseKeys: number[] = [];
+    let promises: Promise<AjaxGetManyEntry & { index: number }>[] = [], promiseKeys: number[] = [];
     let currentSrc = 0;
     for (let _i = Math.min(len, maxConcurrency); currentSrc < _i; currentSrc++) {
         const current = sources[currentSrc];
-        promises.push(wrapPromise(currentSrc, current.id, ajaxGet({ url: current.url, type: current.isBinary ? 'binary' : 'string' }).runAsChild(ctx)));
+
+        promises.push(wrapPromise(currentSrc, current.id,
+            assetManager.resolve(Asset.getUrlAsset(assetManager, current.url), current.isBinary ? 'binary' : 'string').runAsChild(ctx)));
         promiseKeys.push(currentSrc);
     }
 
@@ -228,7 +320,8 @@ export async function ajaxGetMany(ctx: RuntimeContext, sources: { id: string, ur
         promiseKeys = promiseKeys.filter(_filterRemoveIndex, idx);
         if (currentSrc < len) {
             const current = sources[currentSrc];
-            promises.push(wrapPromise(currentSrc, current.id, ajaxGet({ url: current.url, type: current.isBinary ? 'binary' : 'string' }).runAsChild(ctx)));
+            const asset = assetManager.resolve(Asset.getUrlAsset(assetManager, current.url), current.isBinary ? 'binary' : 'string').runAsChild(ctx);
+            promises.push(wrapPromise(currentSrc, current.id, asset));
             promiseKeys.push(currentSrc);
             currentSrc++;
         }
@@ -241,11 +334,11 @@ function _filterRemoveIndex(this: number, _: any, i: number) {
     return this !== i;
 }
 
-async function wrapPromise<T>(index: number, id: string, p: Promise<T>): Promise<AjaxGetManyEntry<T> & { index: number }> {
+async function wrapPromise(index: number, id: string, p: Promise<Asset.Wrapper<'string' | 'binary'>>): Promise<AjaxGetManyEntry & { index: number }> {
     try {
         const result = await p;
         return { kind: 'ok', result, index, id };
     } catch (error) {
-        return { kind: 'error', error, index, id }
+        return { kind: 'error', error, index, id };
     }
 }

@@ -17,7 +17,7 @@ export function hash2(i: number, j: number) {
     let a = 23;
     a = (31 * a + i) | 0;
     a = (31 * a + j) | 0;
-    a = a ^ (a >> 4)
+    a = a ^ (a >> 4);
     a = (a ^ 0xdeadbeef) + (a << 5);
     a = a ^ (a >> 11);
     return a;
@@ -28,7 +28,7 @@ export function hash3(i: number, j: number, k: number) {
     a = (31 * a + i) | 0;
     a = (31 * a + j) | 0;
     a = (31 * a + k) | 0;
-    a = a ^ (a >> 4)
+    a = a ^ (a >> 4);
     a = (a ^ 0xdeadbeef) + (a << 5);
     a = a ^ (a >> 11);
     return a;
@@ -40,7 +40,7 @@ export function hash4(i: number, j: number, k: number, l: number) {
     a = (31 * a + j) | 0;
     a = (31 * a + k) | 0;
     a = (31 * a + l) | 0;
-    a = a ^ (a >> 4)
+    a = a ^ (a >> 4);
     a = (a ^ 0xdeadbeef) + (a << 5);
     a = a ^ (a >> 11);
     return a;
@@ -73,7 +73,7 @@ export function sortedCantorPairing(a: number, b: number) {
 /**
  * 32 bit FNV-1a hash, see http://isthe.com/chongo/tech/comp/fnv/
  */
-export function hashFnv32a(array: number[]) {
+export function hashFnv32a(array: ArrayLike<number>) {
     let hval = 0x811c9dc5;
     for (let i = 0, il = array.length; i < il; ++i) {
         hval ^= array[i];

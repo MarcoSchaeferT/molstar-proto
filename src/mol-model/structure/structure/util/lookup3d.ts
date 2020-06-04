@@ -1,16 +1,46 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import Structure from '../structure'
-import { Lookup3D, GridLookup3D, Result, Box3D, Sphere3D } from 'mol-math/geometry';
-import { Vec3 } from 'mol-math/linear-algebra';
+import Structure from '../structure';
+import { Lookup3D, GridLookup3D, Box3D, Sphere3D, Result } from '../../../../mol-math/geometry';
+import { Vec3 } from '../../../../mol-math/linear-algebra';
 import { computeStructureBoundary } from './boundary';
-import { OrderedSet } from 'mol-data/int';
+import { OrderedSet } from '../../../../mol-data/int';
 import { StructureUniqueSubsetBuilder } from './unique-subset-builder';
 import StructureElement from '../element';
+import Unit from '../unit';
+import { getBoundary } from '../../../../mol-math/geometry/boundary';
+
+export interface StructureResult extends Result<StructureElement.UnitIndex> {
+    units: Unit[]
+}
+
+export namespace StructureResult {
+    export function add(result: StructureResult, unit: Unit, index: StructureElement.UnitIndex, distSq: number) {
+        result.indices[result.count] = index;
+        result.units[result.count] = unit;
+        result.squaredDistances[result.count] = distSq;
+        result.count++;
+    }
+
+    export function create(): StructureResult {
+        return { count: 0, indices: [], units: [], squaredDistances: [] };
+    }
+
+    export function copy(out: StructureResult, result: StructureResult) {
+        for (let i = 0; i < result.count; ++i) {
+            out.indices[i] = result.indices[i];
+            out.units[i] = result.units[i];
+            out.squaredDistances[i] = result.squaredDistances[i];
+        }
+        out.count = result.count;
+        return out;
+    }
+}
 
 export class StructureLookup3D {
     private unitLookup: Lookup3D;
@@ -20,28 +50,27 @@ export class StructureLookup3D {
         return this.unitLookup.find(x, y, z, radius);
     }
 
-    // TODO: find another efficient way how to implement this instead of using "tuple".
-    // find(x: number, y: number, z: number, radius: number): Result<Element.Packed> {
-    //     Result.reset(this.result);
-    //     const { units } = this.structure;
-    //     const closeUnits = this.unitLookup.find(x, y, z, radius);
-    //     if (closeUnits.count === 0) return this.result;
+    private result = StructureResult.create();
+    find(x: number, y: number, z: number, radius: number): StructureResult {
+        Result.reset(this.result);
+        const { units } = this.structure;
+        const closeUnits = this.unitLookup.find(x, y, z, radius);
+        if (closeUnits.count === 0) return this.result;
 
-    //     for (let t = 0, _t = closeUnits.count; t < _t; t++) {
-    //         const unit = units[closeUnits.indices[t]];
-    //         Vec3.set(this.pivot, x, y, z);
-    //         if (!unit.conformation.operator.isIdentity) {
-    //             Vec3.transformMat4(this.pivot, this.pivot, unit.conformation.operator.inverse);
-    //         }
-    //         const unitLookup = unit.lookup3d;
-    //         const groupResult = unitLookup.find(this.pivot[0], this.pivot[1], this.pivot[2], radius);
-    //         for (let j = 0, _j = groupResult.count; j < _j; j++) {
-    //             Result.add(this.result, Element.Packed.create(unit.id, groupResult.indices[j]), groupResult.squaredDistances[j]);
-    //         }
-    //     }
-
-    //     return this.result;
-    // }
+        for (let t = 0, _t = closeUnits.count; t < _t; t++) {
+            const unit = units[closeUnits.indices[t]];
+            Vec3.set(this.pivot, x, y, z);
+            if (!unit.conformation.operator.isIdentity) {
+                Vec3.transformMat4(this.pivot, this.pivot, unit.conformation.operator.inverse);
+            }
+            const unitLookup = unit.lookup3d;
+            const groupResult = unitLookup.find(this.pivot[0], this.pivot[1], this.pivot[2], radius);
+            for (let j = 0, _j = groupResult.count; j < _j; j++) {
+                StructureResult.add(this.result, unit, groupResult.indices[j], groupResult.squaredDistances[j]);
+            }
+        }
+        return this.result;
+    }
 
     findIntoBuilder(x: number, y: number, z: number, radius: number, builder: StructureUniqueSubsetBuilder) {
         const { units } = this.structure;
@@ -72,7 +101,7 @@ export class StructureLookup3D {
         const closeUnits = this.unitLookup.find(x, y, z, radius);
         if (closeUnits.count === 0) return;
 
-        const se = StructureElement.create();
+        const se = StructureElement.Location.create(this.structure);
         const queryRadius = pivotR + maxRadius + radius;
 
         for (let t = 0, _t = closeUnits.count; t < _t; t++) {
@@ -97,8 +126,6 @@ export class StructureLookup3D {
             builder.commitUnit();
         }
     }
-
-
 
     check(x: number, y: number, z: number, radius: number): boolean {
         const { units } = this.structure;
@@ -148,6 +175,7 @@ export class StructureLookup3D {
             radius[i] = s.radius;
         }
 
-        this.unitLookup = GridLookup3D({ x: xs, y: ys, z: zs, radius, indices: OrderedSet.ofBounds(0, unitCount) });
+        const position = { x: xs, y: ys, z: zs, radius, indices: OrderedSet.ofBounds(0, unitCount) };
+        this.unitLookup = GridLookup3D(position, getBoundary(position));
     }
 }

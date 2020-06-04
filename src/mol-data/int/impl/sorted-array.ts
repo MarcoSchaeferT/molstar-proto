@@ -1,16 +1,16 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { sortArray, hash3, hash4, createRangeArray } from '../../util'
-import Interval from '../interval'
+import { sortArray, hash3, hash4, createRangeArray } from '../../util';
+import Interval from '../interval';
 
 type Nums = ArrayLike<number>
 
 
-export const Empty: Nums = []
+export const Empty: Nums = [];
 
 export function ofSingleton(v: number) { return [v]; }
 export function ofSortedArray(xs: Nums) { return xs; }
@@ -35,6 +35,11 @@ export function hashCode(xs: Nums) {
     if (s > 2) return hash4(s, xs[0], xs[s - 1], xs[s >> 1]);
     return hash3(s, xs[0], xs[s - 1]);
 }
+export function toString(xs: Nums) {
+    const s = xs.length;
+    if (s > 5) return `[${xs[0]}, ${xs[1]}, ..., ${xs[s - 1]}], length ${s}`;
+    return `[${(xs as number[]).join(', ')}]`;
+}
 
 /** Returns the index of `x` in `set` or -1 if not found. */
 export function indexOf(xs: Nums, v: number) {
@@ -42,8 +47,10 @@ export function indexOf(xs: Nums, v: number) {
     return l === 0 ? -1 : xs[0] <= v && v <= xs[l - 1] ? binarySearchRange(xs, v, 0, l) : -1;
 }
 export function indexOfInInterval(xs: Nums, v: number, bounds: Interval) {
+    return indexOfInRange(xs, v, Interval.start(bounds), Interval.end(bounds));
+}
+export function indexOfInRange(xs: Nums, v: number, s: number, e: number) {
     const l = xs.length;
-    const s = Interval.start(bounds), e = Interval.end(bounds);
     return l === 0 || e <= s ? -1 : xs[s] <= v && v <= xs[e - 1] ? binarySearchRange(xs, v, s, e) : -1;
 }
 export function has(xs: Nums, v: number) { return indexOf(xs, v) >= 0; }
@@ -60,6 +67,11 @@ export function areEqual(a: Nums, b: Nums) {
     return true;
 }
 
+/**
+ * Returns 0 if `v` is smaller or equal the first element of `xs`
+ * Returns length of `xs` if `v` is bigger than the last element of `xs`
+ * Otherwise returns the first index where the value of `xs` is equal or bigger than `v`
+ */
 export function findPredecessorIndex(xs: Nums, v: number) {
     const len = xs.length;
     if (v <= xs[0]) return 0;
@@ -134,8 +146,8 @@ export function areIntersecting(a: Nums, b: Nums) {
     let { startI: i, startJ: j, endI, endJ } = getSuitableIntersectionRange(a, b);
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
+        if (x < y) i++;
+        else if (x > y) j++;
         else return true;
     }
     return false;
@@ -152,41 +164,55 @@ export function isSubset(a: Nums, b: Nums) {
     let equal = 0;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
-        else { i++; j++; equal++; }
+        if (x < y) {
+            i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            i++; j++; equal++;
+        }
     }
     return equal === lenB;
 }
 
-export function union(a: Nums, b: Nums) {
+export function union(a: Nums, b: Nums): Nums {
     if (a === b) return a;
+
+    const lenA = a.length, lenB = b.length;
+    if (lenA === 0) return b;
+    if (lenB === 0) return a;
+    if (a[0] > b[0]) return union(b, a);
 
     const { startI, startJ, endI, endJ } = getSuitableIntersectionRange(a, b);
     const commonCount = getCommonCount(a, b, startI, startJ, endI, endJ);
 
-    const lenA = a.length, lenB = b.length;
     // A === B || B is subset of A ==> A
     if ((commonCount === lenA && commonCount === lenB) || commonCount === lenB) return a;
     // A is subset of B ===> B
     if (commonCount === lenA) return b;
 
     const indices = new Int32Array(lenA + lenB - commonCount);
-    let offset = 0;
+    let i = 0, j = 0, offset = 0;
 
     // insert the "prefixes"
-    for (let k = 0; k < startI; k++) indices[offset++] = a[k];
-    for (let k = 0; k < startJ; k++) indices[offset++] = b[k];
+    for (i = 0; i < startI; i++) indices[offset++] = a[i];
+    while (j < endJ && a[startI] > b[j]) indices[offset++] = b[j++];
 
     // insert the common part
-    let i = startI;
-    let j = startJ;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { indices[offset++] = x; i++; }
-        else if (x > y) { indices[offset++] = y; j++; }
-        else { indices[offset++] = x; i++; j++; }
+        if (x < y) {
+            indices[offset++] = x; i++;
+        } else if (x > y) {
+            indices[offset++] = y; j++;
+        } else {
+            indices[offset++] = x; i++; j++;
+        }
     }
+
+    // insert the remaining common part
+    for (; i < endI; i++) indices[offset++] = a[i];
+    for (; j < endJ; j++) indices[offset++] = b[j];
 
     // insert the "tail"
     for (; i < lenA; i++) indices[offset++] = a[i];
@@ -206,9 +232,13 @@ function getCommonCount(a: Nums, b: Nums, startI: number, startJ: number, endI: 
     let commonCount = 0;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
-        else { i++; j++; commonCount++; }
+        if (x < y) {
+            i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            i++; j++; commonCount++;
+        }
     }
     return commonCount;
 }
@@ -233,9 +263,13 @@ export function intersect(a: Nums, b: Nums) {
     let j = startJ;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
-        else { indices[offset++] = x; i++; j++; }
+        if (x < y) {
+            i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            indices[offset++] = x; i++; j++;
+        }
     }
 
     return ofSortedArray(indices);
@@ -250,9 +284,13 @@ export function subtract(a: Nums, b: Nums) {
     let commonCount = 0;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
-        else { i++; j++; commonCount++; }
+        if (x < y) {
+            i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            i++; j++; commonCount++;
+        }
     }
 
     // A isnt intersecting B ===> A
@@ -270,9 +308,13 @@ export function subtract(a: Nums, b: Nums) {
     j = sJ;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { indices[offset++] = x; i++; }
-        else if (x > y) { j++; }
-        else { i++; j++; }
+        if (x < y) {
+            indices[offset++] = x; i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            i++; j++;
+        }
     }
 
     // insert the "tail"
@@ -305,9 +347,13 @@ export function indicesOf(a: Nums, b: Nums): Nums {
     let commonCount = 0;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
-        else { i++; j++; commonCount++; }
+        if (x < y) {
+            i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            i++; j++; commonCount++;
+        }
     }
 
     const lenA = a.length;
@@ -322,9 +368,13 @@ export function indicesOf(a: Nums, b: Nums): Nums {
     j = sJ;
     while (i < endI && j < endJ) {
         const x = a[i], y = b[j];
-        if (x < y) { i++; }
-        else if (x > y) { j++; }
-        else { indices[offset++] = i; i++; j++; }
+        if (x < y) {
+            i++;
+        } else if (x > y) {
+            j++;
+        } else {
+            indices[offset++] = i; i++; j++;
+        }
     }
 
     return ofSortedArray(indices);

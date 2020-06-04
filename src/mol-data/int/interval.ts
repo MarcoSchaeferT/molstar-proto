@@ -4,7 +4,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as Impl from './impl/interval'
+import * as Impl from './impl/interval';
 
 namespace Interval {
     export const Empty: Interval = Impl.Empty as any;
@@ -14,6 +14,8 @@ namespace Interval {
     export const ofRange: <T extends number = number>(min: T, max: T) => Interval<T> = Impl.ofRange as any;
     /** Create interval from bounds [start, end), i.e. [start, end - 1] */
     export const ofBounds: <T extends number = number>(start: T, end: T) => Interval<T> = Impl.ofBounds as any;
+    /** Create interval from length [0, length), i.e. [0, length - 1] */
+    export const ofLength: <T extends number = number>(length: T) => Interval<T> = Impl.ofLength as any;
     export const is: <T extends number = number>(v: any) => v is Interval<T> = Impl.is as any;
 
     /** Test if a value is within the bounds of the interval */
@@ -34,6 +36,8 @@ namespace Interval {
     export const size: <T extends number = number>(interval: Interval<T>) => number = Impl.size as any;
     /** Hash code describing the interval */
     export const hashCode: <T extends number = number>(interval: Interval<T>) => number = Impl.hashCode as any;
+    /** String representation of the interval */
+    export const toString: <T extends number = number>(interval: Interval<T>) => string = Impl.toString as any;
 
     /** Test if two intervals are identical */
     export const areEqual: <T extends number = number>(a: Interval<T>, b: Interval<T>) => boolean = Impl.areEqual as any;
@@ -56,4 +60,4 @@ namespace Interval {
 /** Interval describing a range [min, max] of values */
 interface Interval<T extends number = number> { '@type': 'int-interval' }
 
-export default Interval
+export default Interval;

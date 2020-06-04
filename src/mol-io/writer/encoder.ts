@@ -4,11 +4,12 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import Writer from './writer'
+import Writer from './writer';
 
 interface Encoder {
     encode(): void,
-    writeTo(writer: Writer): void
+    writeTo(writer: Writer): void,
+    getSize(): number
 }
 
-export default Encoder
+export default Encoder;

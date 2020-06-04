@@ -4,15 +4,33 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as fs from 'fs'
-import * as path from 'path'
-import * as argparse from 'argparse'
+import * as fs from 'fs';
+import * as path from 'path';
+import * as argparse from 'argparse';
 import { runMaster, PreprocessEntry } from './parallel';
 import { ModelPropertyProviderConfig } from '../property-provider';
 
+function description() {
+    const exampleCfg = {
+        numProcesses: 1,
+        customProperties: {
+            sources: [
+                'wwpdb'
+            ],
+            params: {
+                wwPDB: {
+                    chemCompBondTablePath: './build/data/ccb.bcif'
+                }
+            }
+        }
+    };
+
+    return `Preprocess CIF files to include custom properties and convert them to BinaryCIF format.\n\nExample cfg.json: ${JSON.stringify(exampleCfg, null, 2)}`;
+}
+
 const cmdParser = new argparse.ArgumentParser({
     addHelp: true,
-    description: 'Preprocess CIF files to include custom properties and convert them to BinaryCIF format.'
+    description: description()
 });
 cmdParser.addArgument(['--input', '-i'], { help: 'Input filename', required: false });
 cmdParser.addArgument(['--outCIF', '-oc'], { help: 'Output CIF filename', required: false });
@@ -50,8 +68,8 @@ if (Object.keys(cmdArgs).filter(k => (cmdArgs as any)[k] !== null).length === 0 
     process.exit(0);
 }
 
-let entries: PreprocessEntry[] = []
-let config: PreprocessConfig = { numProcesses: cmdArgs.folderIn ? +(cmdArgs.folderNumProcesses || 1) : 1, customProperties: void 0 }
+let entries: PreprocessEntry[] = [];
+let config: PreprocessConfig = { numProcesses: cmdArgs.folderIn ? +(cmdArgs.folderNumProcesses || 1) : 1, customProperties: void 0 };
 
 if (cmdArgs.input) entries.push({ source: cmdArgs.input, cif: cmdArgs.outCIF, bcif: cmdArgs.outBCIF });
 // else if (cmdArgs.bulk) runBulk(cmdArgs.bulk);

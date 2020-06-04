@@ -4,12 +4,12 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Renderable, RenderableState, createRenderable } from '../renderable'
+import { Renderable, RenderableState, createRenderable } from '../renderable';
 import { WebGLContext } from '../webgl/context';
-import { createRenderItem } from '../webgl/render-item';
+import { createGraphicsRenderItem } from '../webgl/render-item';
 import { AttributeSpec, Values, UniformSpec, GlobalUniformSchema, InternalSchema, TextureSpec, ValueSpec, ElementsSpec, DefineSpec, InternalValues } from './schema';
 import { DirectVolumeShaderCode } from '../shader-code';
-import { ValueCell } from 'mol-util';
+import { ValueCell } from '../../mol-util';
 
 export const DirectVolumeSchema = {
     uColor: UniformSpec('v3'),
@@ -24,8 +24,20 @@ export const DirectVolumeSchema = {
     tOverpaint: TextureSpec('image-uint8', 'rgba', 'ubyte', 'nearest'),
     dOverpaint: DefineSpec('boolean'),
 
+    uTransparencyTexDim: UniformSpec('v2'),
+    tTransparency: TextureSpec('image-uint8', 'alpha', 'ubyte', 'nearest'),
+    dTransparency: DefineSpec('boolean'),
+    dTransparencyVariant: DefineSpec('string', ['single', 'multi']),
+
+    dClipObjectCount: DefineSpec('number'),
+    dClipVariant: DefineSpec('string', ['instance', 'pixel']),
+    uClippingTexDim: UniformSpec('v2'),
+    tClipping: TextureSpec('image-uint8', 'alpha', 'ubyte', 'nearest'),
+    dClipping: DefineSpec('boolean'),
+
     uInstanceCount: UniformSpec('i'),
     uGroupCount: UniformSpec('i'),
+    uInvariantBoundingSphere: UniformSpec('v4'),
 
     aInstance: AttributeSpec('float32', 1, 1),
     aTransform: AttributeSpec('float32', 16, 1),
@@ -46,9 +58,6 @@ export const DirectVolumeSchema = {
     elements: ElementsSpec('uint32'),
 
     uAlpha: UniformSpec('f'),
-    uHighlightColor: UniformSpec('v3'),
-    uSelectColor: UniformSpec('v3'),
-    dUseFog: DefineSpec('boolean'),
 
     uIsoValue: UniformSpec('f'),
     uBboxMin: UniformSpec('v3'),
@@ -62,18 +71,17 @@ export const DirectVolumeSchema = {
 
     dGridTexType: DefineSpec('string', ['2d', '3d']),
     uGridTexDim: UniformSpec('v3'),
-    tGridTex: TextureSpec('texture', 'rgba', 'ubyte', 'linear'),
-}
+    tGridTex: TextureSpec('texture', 'rgba', 'float', 'nearest'),
+};
 export type DirectVolumeSchema = typeof DirectVolumeSchema
 export type DirectVolumeValues = Values<DirectVolumeSchema>
 
-export function DirectVolumeRenderable(ctx: WebGLContext, id: number, values: DirectVolumeValues, state: RenderableState): Renderable<DirectVolumeValues> {
-    const schema = { ...GlobalUniformSchema, ...InternalSchema, ...DirectVolumeSchema }
+export function DirectVolumeRenderable(ctx: WebGLContext, id: number, values: DirectVolumeValues, state: RenderableState, materialId: number): Renderable<DirectVolumeValues> {
+    const schema = { ...GlobalUniformSchema, ...InternalSchema, ...DirectVolumeSchema };
     const internalValues: InternalValues = {
         uObjectId: ValueCell.create(id),
-        uPickable: ValueCell.create(state.pickable ? 1 : 0)
-    }
-    const shaderCode = DirectVolumeShaderCode
-    const renderItem = createRenderItem(ctx, 'triangles', shaderCode, schema, { ...values, ...internalValues })
+    };
+    const shaderCode = DirectVolumeShaderCode;
+    const renderItem = createGraphicsRenderItem(ctx, 'triangles', shaderCode, schema, { ...values, ...internalValues }, materialId);
     return createRenderable(renderItem, values, state);
 }

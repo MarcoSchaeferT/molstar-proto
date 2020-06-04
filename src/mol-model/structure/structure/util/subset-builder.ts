@@ -4,8 +4,8 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { IntMap, SortedArray } from 'mol-data/int';
-import { sortArray } from 'mol-data/util';
+import { IntMap, SortedArray } from '../../../../mol-data/int';
+import { sortArray } from '../../../../mol-data/util';
 import StructureElement from '../element';
 import StructureSymmetry from '../symmetry';
 import Unit from '../unit';
@@ -21,8 +21,9 @@ export class StructureSubsetBuilder {
 
     addToUnit(parentId: number, e: ElementIndex) {
         const unit = this.unitMap.get(parentId);
-        if (!!unit) { unit[unit.length] = e; }
-        else {
+        if (!!unit) {
+            unit[unit.length] = e;
+        } else {
             this.unitMap.set(parentId, [e]);
             this.ids[this.ids.length] = parentId;
         }
@@ -90,7 +91,7 @@ export class StructureSubsetBuilder {
             newUnits[newUnits.length] = child;
         }
 
-        return Structure.create(newUnits);
+        return Structure.create(newUnits, { parent: this.parent });
     }
 
     getStructure() {
@@ -101,7 +102,7 @@ export class StructureSubsetBuilder {
         return this._getStructure(true);
     }
 
-    setSingletonLocation(location: StructureElement) {
+    setSingletonLocation(location: StructureElement.Location) {
         const id = this.ids[0];
         location.unit = this.parent.unitMap.get(id);
         location.element = this.unitMap.get(id)[0];

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -19,10 +19,17 @@
 
 import Mat4 from './mat4';
 import { Quat, Mat3, EPSILON } from '../3d';
-import { spline as _spline, clamp } from '../../interpolate'
-import { NumberArray } from 'mol-util/type-helpers';
+import { spline as _spline, quadraticBezier as _quadraticBezier, clamp } from '../../interpolate';
+import { NumberArray } from '../../../mol-util/type-helpers';
+
+export { ReadonlyVec3 };
 
 interface Vec3 extends Array<number> { [d: number]: number, '@type': 'vec3', length: 3 }
+interface ReadonlyVec3 extends Array<number> { readonly [d: number]: number, '@type': 'vec3', length: 3 }
+
+function Vec3() {
+    return Vec3.zero();
+}
 
 namespace Vec3 {
     export function zero(): Vec3 {
@@ -40,7 +47,14 @@ namespace Vec3 {
     }
 
     export function hasNaN(a: Vec3) {
-        return isNaN(a[0]) || isNaN(a[1]) || isNaN(a[2])
+        return isNaN(a[0]) || isNaN(a[1]) || isNaN(a[2]);
+    }
+
+    export function setNaN(out: Vec3) {
+        out[0] = NaN;
+        out[1] = NaN;
+        out[2] = NaN;
+        return out;
     }
 
     export function fromObj(v: { x: number, y: number, z: number }): Vec3 {
@@ -52,16 +66,17 @@ namespace Vec3 {
     }
 
     export function fromArray(v: Vec3, array: ArrayLike<number>, offset: number) {
-        v[0] = array[offset + 0]
-        v[1] = array[offset + 1]
-        v[2] = array[offset + 2]
-        return v
+        v[0] = array[offset + 0];
+        v[1] = array[offset + 1];
+        v[2] = array[offset + 2];
+        return v;
     }
 
     export function toArray(v: Vec3, out: NumberArray, offset: number) {
-        out[offset + 0] = v[0]
-        out[offset + 1] = v[1]
-        out[offset + 2] = v[2]
+        out[offset + 0] = v[0];
+        out[offset + 1] = v[1];
+        out[offset + 2] = v[2];
+        return out;
     }
 
     export function create(x: number, y: number, z: number): Vec3 {
@@ -224,7 +239,7 @@ namespace Vec3 {
     }
 
     export function setMagnitude(out: Vec3, a: Vec3, l: number) {
-        return Vec3.scale(out, Vec3.normalize(out, a), l)
+        return Vec3.scale(out, Vec3.normalize(out, a), l);
     }
 
     /**
@@ -288,7 +303,7 @@ namespace Vec3 {
         return out;
     }
 
-    const slerpRelVec = Vec3.zero()
+    const slerpRelVec = Vec3.zero();
     export function slerp(out: Vec3, a: Vec3, b: Vec3, t: number) {
         const dot = clamp(Vec3.dot(a, b), -1, 1);
         const theta = Math.acos(dot) * t;
@@ -333,6 +348,14 @@ namespace Vec3 {
         return out;
     }
 
+    export function quadraticBezier(out: Vec3, a: Vec3, b: Vec3, c: Vec3, t: number) {
+        out[0] = _quadraticBezier(a[0], b[0], c[0], t);
+        out[1] = _quadraticBezier(a[1], b[1], c[1], t);
+        out[2] = _quadraticBezier(a[2], b[2], c[2], t);
+
+        return out;
+    }
+
     /**
      * Performs a spline interpolation with two control points and a tension parameter
      */
@@ -350,7 +373,7 @@ namespace Vec3 {
     export function random(out: Vec3, scale: number) {
         const r = Math.random() * 2.0 * Math.PI;
         const z = (Math.random() * 2.0) - 1.0;
-        const zScale = Math.sqrt(1.0-z*z) * scale;
+        const zScale = Math.sqrt(1.0 - z * z) * scale;
 
         out[0] = Math.cos(r) * zScale;
         out[1] = Math.sin(r) * zScale;
@@ -413,24 +436,34 @@ namespace Vec3 {
         return out;
     }
 
-    const angleTempA = zero(), angleTempB = zero();
+    /** Computes the angle between 2 vectors, reports in radians. */
     export function angle(a: Vec3, b: Vec3) {
-        copy(angleTempA, a);
-        copy(angleTempB, b);
+        const theta = dot(a, b) / Math.sqrt(squaredMagnitude(a) * squaredMagnitude(b));
+        return Math.acos(clamp(theta, -1, 1)); // clamp to avoid numerical problems
+    }
 
-        normalize(angleTempA, angleTempA);
-        normalize(angleTempB, angleTempB);
+    const tmp_dh_ab = zero();
+    const tmp_dh_cb = zero();
+    const tmp_dh_bc = zero();
+    const tmp_dh_dc = zero();
+    const tmp_dh_abc = zero();
+    const tmp_dh_bcd = zero();
+    const tmp_dh_cross = zero();
+    /**
+     * Computes the dihedral angles of 4 points, reports in radians.
+     */
+    export function dihedralAngle(a: Vec3, b: Vec3, c: Vec3, d: Vec3): number {
+        sub(tmp_dh_ab, a, b);
+        sub(tmp_dh_cb, c, b);
+        sub(tmp_dh_bc, b, c);
+        sub(tmp_dh_dc, d, c);
 
-        const cosine = dot(angleTempA, angleTempB);
+        cross(tmp_dh_abc, tmp_dh_ab, tmp_dh_cb);
+        cross(tmp_dh_bcd, tmp_dh_bc, tmp_dh_dc);
 
-        if (cosine > 1.0) {
-            return 0;
-        }
-        else if (cosine < -1.0) {
-            return Math.PI;
-        } else {
-            return Math.acos(cosine);
-        }
+        const _angle = angle(tmp_dh_abc, tmp_dh_bcd);
+        cross(tmp_dh_cross, tmp_dh_abc, tmp_dh_bcd);
+        return dot(tmp_dh_cb, tmp_dh_cross) > 0 ? _angle : -_angle;
     }
 
     /**
@@ -446,19 +479,18 @@ namespace Vec3 {
     export function equals(a: Vec3, b: Vec3) {
         const a0 = a[0], a1 = a[1], a2 = a[2];
         const b0 = b[0], b1 = b[1], b2 = b[2];
-        return (Math.abs(a0 - b0) <= EPSILON.Value * Math.max(1.0, Math.abs(a0), Math.abs(b0)) &&
-                Math.abs(a1 - b1) <= EPSILON.Value * Math.max(1.0, Math.abs(a1), Math.abs(b1)) &&
-                Math.abs(a2 - b2) <= EPSILON.Value * Math.max(1.0, Math.abs(a2), Math.abs(b2)));
+        return (Math.abs(a0 - b0) <= EPSILON * Math.max(1.0, Math.abs(a0), Math.abs(b0)) &&
+                Math.abs(a1 - b1) <= EPSILON * Math.max(1.0, Math.abs(a1), Math.abs(b1)) &&
+                Math.abs(a2 - b2) <= EPSILON * Math.max(1.0, Math.abs(a2), Math.abs(b2)));
     }
 
     const rotTemp = zero();
-    const flipScaling = create(-1, -1, -1);
     export function makeRotation(mat: Mat4, a: Vec3, b: Vec3): Mat4 {
         const by = angle(a, b);
         if (Math.abs(by) < 0.0001) return Mat4.setIdentity(mat);
-        if (Math.abs(by - Math.PI) < EPSILON.Value) {
+        if (Math.abs(by - Math.PI) < EPSILON) {
             // here, axis can be [0,0,0] but the rotation is a simple flip
-            return Mat4.fromScaling(mat, flipScaling);
+            return Mat4.fromScaling(mat, negUnit);
         }
         const axis = cross(rotTemp, a, b);
         return Mat4.fromRotation(mat, by, axis);
@@ -468,16 +500,37 @@ namespace Vec3 {
         return v[0] === 0 && v[1] === 0 && v[2] === 0;
     }
 
+    /** Project `point` onto `vector` starting from `origin` */
     export function projectPointOnVector(out: Vec3, point: Vec3, vector: Vec3, origin: Vec3) {
-        // point.sub(origin).projectOnVector(vector).add(origin)
-        sub(out, copy(out, point), origin)
+        sub(out, copy(out, point), origin);
         const scalar = dot(vector, out) / squaredMagnitude(vector);
         return add(out, scale(out, copy(out, vector), scalar), origin);
+    }
+
+    export function projectOnVector(out: Vec3, p: Vec3, vector: Vec3 ) {
+        const scalar = dot(vector, p) / squaredMagnitude(vector);
+        return scale(out, vector, scalar);
+    }
+
+    const tmpProject = Vec3();
+    export function projectOnPlane(out: Vec3, p: Vec3, normal: Vec3) {
+        projectOnVector(tmpProject, p, normal);
+        return sub(out, p, tmpProject);
     }
 
     /** Get a vector that is similar to `b` but orthogonal to `a` */
     export function orthogonalize(out: Vec3, a: Vec3, b: Vec3) {
         return normalize(out, cross(out, cross(out, a, b), a));
+    }
+
+    /**
+     * Get a vector like `a` that point into the same general direction as `b`,
+     * i.e. where the dot product is > 0
+     */
+    export function matchDirection(out: Vec3, a: Vec3, b: Vec3) {
+        if (Vec3.dot(a, b) > 0) Vec3.copy(out, a);
+        else Vec3.negate(out, Vec3.copy(out, a));
+        return out;
     }
 
     const triangleNormalTmpAB = zero();
@@ -489,9 +542,18 @@ namespace Vec3 {
         return normalize(out, cross(out, triangleNormalTmpAB, triangleNormalTmpAC));
     }
 
-    export function toString(a: Vec3) {
-        return `[${a[0]} ${a[1]} ${a[2]}]`;
+    export function toString(a: Vec3, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)} ${a[2].toPrecision(precision)}]`;
     }
+
+    export const origin: ReadonlyVec3 = Vec3.create(0, 0, 0);
+
+    export const unit: ReadonlyVec3 = Vec3.create(1, 1, 1);
+    export const negUnit: ReadonlyVec3 = Vec3.create(-1, -1, -1);
+
+    export const unitX: ReadonlyVec3 = Vec3.create(1, 0, 0);
+    export const unitY: ReadonlyVec3 = Vec3.create(0, 1, 0);
+    export const unitZ: ReadonlyVec3 = Vec3.create(0, 0, 1);
 }
 
-export default Vec3
+export default Vec3;

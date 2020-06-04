@@ -4,9 +4,10 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { CifWriter } from 'mol-io/writer/cif';
-import { Model } from 'mol-model/structure';
-import { dateToUtcString } from 'mol-util/date';
+import { CifWriter } from '../../mol-io/writer/cif';
+import { Model } from '../../mol-model/structure';
+import { dateToUtcString } from '../../mol-util/date';
+import { MmcifFormat } from '../../mol-model-formats/structure/mmcif';
 
 interface PropertyWrapper<Data> {
     info: PropertyWrapper.Info,
@@ -32,7 +33,7 @@ namespace PropertyWrapper {
                     source: [{ data: info, rowCount: 1 }]
                 };
             }
-        }
+        };
     }
 
     const _info_fields: CifWriter.Field<number, Info>[] = [
@@ -40,15 +41,15 @@ namespace PropertyWrapper {
     ];
 
     export function tryGetInfoFromCif(categoryName: string, model: Model): Info | undefined {
-        if (model.sourceData.kind !== 'mmCIF' || !model.sourceData.frame.categoryNames.includes(categoryName)) {
+        if (!MmcifFormat.is(model.sourceData) || !model.sourceData.data.frame.categoryNames.includes(categoryName)) {
             return;
         }
 
-        const timestampField = model.sourceData.frame.categories[categoryName].getField('updated_datetime_utc');
+        const timestampField = model.sourceData.data.frame.categories[categoryName].getField('updated_datetime_utc');
         if (!timestampField || timestampField.rowCount === 0) return;
 
         return { timestamp_utc: timestampField.str(0) || dateToUtcString(new Date()) };
     }
 }
 
-export { PropertyWrapper }
+export { PropertyWrapper };

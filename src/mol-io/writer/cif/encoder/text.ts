@@ -6,10 +6,10 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Column } from 'mol-data/db'
-import StringBuilder from 'mol-util/string-builder'
-import { Category, Field, Encoder } from '../encoder'
-import Writer from '../../writer'
+import { Column } from '../../../../mol-data/db';
+import StringBuilder from '../../../../mol-util/string-builder';
+import { Category, Field, Encoder } from '../encoder';
+import Writer from '../../writer';
 import { getFieldDigitCount, getIncludedFields, getCategoryInstanceData, CategoryInstanceData } from './util';
 
 export default class TextEncoder implements Encoder<string> {
@@ -19,8 +19,16 @@ export default class TextEncoder implements Encoder<string> {
     private filter: Category.Filter = Category.DefaultFilter;
     private formatter: Category.Formatter = Category.DefaultFormatter;
 
+    readonly isBinary = false;
+
+    binaryEncodingProvider = void 0;
+
     setFilter(filter?: Category.Filter) {
         this.filter = filter || Category.DefaultFilter;
+    }
+
+    isCategoryIncluded(name: string) {
+        return this.filter.includeCategory(name);
     }
 
     setFormatter(formatter?: Category.Formatter) {
@@ -32,7 +40,7 @@ export default class TextEncoder implements Encoder<string> {
         StringBuilder.write(this.builder, `data_${(header || '').replace(/[ \n\t]/g, '').toUpperCase()}\n#\n`);
     }
 
-    writeCategory<Ctx>(category: Category<Ctx>, context?: Ctx) {
+    writeCategory<Ctx>(category: Category<Ctx>, context?: Ctx, options?: Encoder.WriteCategoryOptions) {
         if (this.encoded) {
             throw new Error('The writer contents have already been encoded, no more writing.');
         }
@@ -41,7 +49,7 @@ export default class TextEncoder implements Encoder<string> {
             throw new Error('No data block created.');
         }
 
-        if (!this.filter.includeCategory(category.name)) return;
+        if (!options?.ignoreFilter && !this.filter.includeCategory(category.name)) return;
         const { instance, rowCount, source } = getCategoryInstanceData(category, context);
         if (!rowCount) return;
 
@@ -61,6 +69,10 @@ export default class TextEncoder implements Encoder<string> {
         for (let i = 0, _i = chunks.length; i < _i; i++) {
             stream.writeString(chunks[i]);
         }
+    }
+
+    getSize() {
+        return StringBuilder.getSize(this.builder);
     }
 
     getData() {

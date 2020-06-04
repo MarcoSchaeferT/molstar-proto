@@ -4,13 +4,15 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Segmentation, SortedArray } from 'mol-data/int';
-import { IntAdjacencyGraph } from 'mol-math/graph';
-import { LinkType } from '../../../model/types';
+import { Segmentation, SortedArray } from '../../../../../mol-data/int';
+import { IntAdjacencyGraph } from '../../../../../mol-math/graph';
+import { BondType } from '../../../model/types';
 import { StructureElement } from '../../../structure';
 import Unit from '../../unit';
-import { IntraUnitLinks } from '../links/data';
-import { sortArray } from 'mol-data/util';
+import { IntraUnitBonds } from '../bonds/data';
+import { sortArray } from '../../../../../mol-data/util';
+import { Column } from '../../../../../mol-data/db';
+import { arraySetAdd, arraySetRemove } from '../../../../../mol-util/array';
 
 export function computeRings(unit: Unit.Atomic) {
     const size = largestResidue(unit);
@@ -42,10 +44,14 @@ interface State {
     right: Int32Array,
 
     currentColor: number,
+    currentAltLoc: string,
+    hasAltLoc: boolean,
 
     rings: SortedArray<StructureElement.UnitIndex>[],
-    bonds: IntraUnitLinks,
-    unit: Unit.Atomic
+    currentRings: SortedArray<StructureElement.UnitIndex>[],
+    bonds: IntraUnitBonds,
+    unit: Unit.Atomic,
+    altLoc: Column<string>
 }
 
 function State(unit: Unit.Atomic, capacity: number): State {
@@ -60,9 +66,13 @@ function State(unit: Unit.Atomic, capacity: number): State {
         right: new Int32Array(Constants.MaxDepth),
         color: new Int32Array(capacity),
         currentColor: 0,
+        currentAltLoc: '',
+        hasAltLoc: false,
         rings: [],
+        currentRings: [],
         unit,
-        bonds: unit.links
+        bonds: unit.bonds,
+        altLoc: unit.model.atomicHierarchy.atoms.label_alt_id
     };
 }
 
@@ -75,6 +85,8 @@ function resetState(state: State) {
         color[i] = 0;
     }
     state.currentColor = 0;
+    state.currentAltLoc = '';
+    state.hasAltLoc = false;
 }
 
 function largestResidue(unit: Unit.Atomic) {
@@ -95,17 +107,48 @@ function processResidue(state: State, start: number, end: number) {
     // no two atom rings
     if (state.endVertex - state.startVertex < 3) return;
 
-    resetState(state);
+    state.currentRings = [];
 
-    for (let i = 0; i < state.count; i++) {
-        if (visited[i] >= 0) continue;
-        findRings(state, i);
+    const { elements } = state.unit;
+    const altLocs: string[] = [];
+    for (let i = state.startVertex; i < state.endVertex; i++) {
+        const altLoc = state.altLoc.value(elements[i]);
+        arraySetAdd(altLocs, altLoc);
+    }
+    arraySetRemove(altLocs, '');
+
+    if (altLocs.length === 0) {
+        resetState(state);
+        for (let i = 0; i < state.count; i++) {
+            if (visited[i] >= 0) continue;
+            findRings(state, i);
+        }
+    } else {
+        for (let aI = 0; aI < altLocs.length; aI++) {
+            resetState(state);
+            state.hasAltLoc = true;
+            state.currentAltLoc = altLocs[aI];
+            for (let i = 0; i < state.count; i++) {
+                if (visited[i] >= 0) continue;
+                const altLoc = state.altLoc.value(elements[state.startVertex + i]);
+                if (altLoc && altLoc !== state.currentAltLoc) {
+                    continue;
+                }
+                findRings(state, i);
+            }
+        }
+    }
+
+    for (let i = 0, _i = state.currentRings.length; i < _i; i++) {
+        state.rings.push(state.currentRings[i]);
     }
 }
 
 function addRing(state: State, a: number, b: number) {
     // only "monotonous" rings
-    if (b < a) return;
+    if (b < a) {
+        return;
+    }
 
     const { pred, color, left, right } = state;
     const nc = ++state.currentColor;
@@ -132,7 +175,9 @@ function addRing(state: State, a: number, b: number) {
         current = pred[current];
         if (current < 0) break;
     }
-    if (!found) return;
+    if (!found) {
+        return;
+    }
 
     current = a;
     for (let t = 0; t < Constants.MaxDepth; t++) {
@@ -142,17 +187,46 @@ function addRing(state: State, a: number, b: number) {
         if (current < 0) break;
     }
 
-    const ring = new Int32Array(leftOffset + rightOffset);
+    const len = leftOffset + rightOffset;
+    // rings must have at least three elements
+    if (len < 3) {
+        return;
+    }
+
+    const ring = new Int32Array(len);
     let ringOffset = 0;
     for (let t = 0; t < leftOffset; t++) ring[ringOffset++] = state.startVertex + left[t];
     for (let t = rightOffset - 1; t >= 0; t--) ring[ringOffset++] = state.startVertex + right[t];
 
     sortArray(ring);
-    state.rings.push(SortedArray.ofSortedArray(ring));
+
+    if (state.hasAltLoc) {
+        // we need to check if the ring was already added because alt locs are present.
+
+        for (let rI = 0, _rI = state.currentRings.length; rI < _rI; rI++) {
+            const r = state.currentRings[rI];
+            if (ring[0] !== r[0]) continue;
+            if (ring.length !== r.length) continue;
+
+            let areSame = true;
+            for (let aI = 0, _aI = ring.length; aI < _aI; aI++) {
+                if (ring[aI] !== r[aI]) {
+                    areSame = false;
+                    break;
+                }
+            }
+            if (areSame) {
+                return;
+            }
+        }
+    }
+
+    state.currentRings.push(SortedArray.ofSortedArray(ring));
 }
 
 function findRings(state: State, from: number) {
     const { bonds, startVertex, endVertex, visited, queue, pred } = state;
+    const { elements } = state.unit;
     const { b: neighbor, edgeProps: { flags: bondFlags }, offset } = bonds;
     visited[from] = 1;
     queue[0] = from;
@@ -165,12 +239,21 @@ function findRings(state: State, from: number) {
 
         for (let i = start; i < end; i++) {
             const b = neighbor[i];
-            if (b < startVertex || b >= endVertex || !LinkType.isCovalent(bondFlags[i])) continue;
+            if (b < startVertex || b >= endVertex || !BondType.isCovalent(bondFlags[i])) continue;
+
+            if (state.hasAltLoc) {
+                const altLoc = state.altLoc.value(elements[b]);
+                if (altLoc && state.currentAltLoc !== altLoc) {
+                    continue;
+                }
+            }
 
             const other = b - startVertex;
 
             if (visited[other] > 0) {
-                if (pred[other] !== top && pred[top] !== other) addRing(state, top, other);
+                if (pred[other] !== top && pred[top] !== other) {
+                    addRing(state, top, other);
+                }
                 continue;
             }
 
@@ -249,8 +332,9 @@ function buildFinderprint(elements: string[], offset: number) {
 type RingIndex = import('../rings').UnitRings.Index
 type RingComponentIndex = import('../rings').UnitRings.ComponentIndex
 
-export function createIndex(rings: ArrayLike<SortedArray<StructureElement.UnitIndex>>) {
+export function createIndex(rings: ArrayLike<SortedArray<StructureElement.UnitIndex>>, aromaticRings: ReadonlyArray<RingIndex>) {
     const elementRingIndices: Map<StructureElement.UnitIndex, RingIndex[]> = new Map();
+    const elementAromaticRingIndices: Map<StructureElement.UnitIndex, RingIndex[]> = new Map();
 
     // for each ring atom, assign all rings that it is present in
     for (let rI = 0 as RingIndex, _rI = rings.length; rI < _rI; rI++) {
@@ -259,6 +343,17 @@ export function createIndex(rings: ArrayLike<SortedArray<StructureElement.UnitIn
             const e = r[i];
             if (elementRingIndices.has(e)) elementRingIndices.get(e)!.push(rI);
             else elementRingIndices.set(e, [rI]);
+        }
+    }
+
+    // for each ring atom, assign all aromatic rings that it is present in
+    for (let aI = 0, _aI = aromaticRings.length; aI < _aI; aI++) {
+        const rI = aromaticRings[aI];
+        const r = rings[rI];
+        for (let i = 0, _i = r.length; i < _i; i++) {
+            const e = r[i];
+            if (elementAromaticRingIndices.has(e)) elementAromaticRingIndices.get(e)!.push(rI);
+            else elementAromaticRingIndices.set(e, [rI]);
         }
     }
 
@@ -292,5 +387,5 @@ export function createIndex(rings: ArrayLike<SortedArray<StructureElement.UnitIn
         ringComponents[ringComponentIndex[rI]].push(rI);
     }
 
-    return { elementRingIndices, ringComponentIndex, ringComponents };
+    return { elementRingIndices, elementAromaticRingIndices, ringComponentIndex, ringComponents };
 }

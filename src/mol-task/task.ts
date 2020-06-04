@@ -4,11 +4,11 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { RuntimeContext } from './execution/runtime-context'
-import { Progress } from './execution/progress'
+import { RuntimeContext } from './execution/runtime-context';
+import { Progress } from './execution/progress';
 import { ExecuteObservable, ExecuteObservableChild, ExecuteInContext } from './execution/observable';
 import { SyncRuntimeContext } from './execution/synchronous';
-import { idFactory } from 'mol-util/id-factory';
+import { idFactory } from '../mol-util/id-factory';
 
 /** A "named function wrapper" with built in "computation tree progress tracking". */
 interface Task<T> {
@@ -34,8 +34,8 @@ namespace Task {
     class Impl<T> implements Task<T> {
         readonly id: number;
 
-        run(observer?: Progress.Observer, updateRateMs?: number): Promise<T> {
-            if (observer) return ExecuteObservable(this, observer, updateRateMs as number || 250);
+        run(observer?: Progress.Observer, updateRateMs = 250): Promise<T> {
+            if (observer) return ExecuteObservable(this, observer, updateRateMs);
             return this.f(SyncRuntimeContext);
         }
 
@@ -54,15 +54,21 @@ namespace Task {
         }
     }
 
-    export interface Aborted { isAborted: true, reason: string }
+    export function is<T = any>(t: any): t is Task<T> {
+        const _t = t as Task<any>;
+        return !!t && typeof _t.id === 'number' && typeof _t.name === 'string' && !!_t.run;
+    }
+
+    export interface Aborted { isAborted: true, reason: string, toString(): string }
     export function isAbort(e: any): e is Aborted { return !!e && !!e.isAborted; }
-    export function Aborted(reason: string): Aborted { return { isAborted: true, reason }; }
+    export function Aborted(reason: string): Aborted { return { isAborted: true, reason, toString() { return `Aborted${reason ? ': ' + reason : ''}`; } }; }
 
     export function create<T>(name: string, f: (ctx: RuntimeContext) => Promise<T>, onAbort?: () => void): Task<T> {
         return new Impl(name, f, onAbort);
     }
 
     export function constant<T>(name: string, value: T): Task<T> { return create(name, async ctx => value); }
+    export function empty(): Task<void> { return create('', async ctx => {}); }
     export function fail(name: string, reason: string): Task<any> { return create(name, async ctx => { throw new Error(reason); }); }
 
     export interface Progress {
@@ -76,7 +82,7 @@ namespace Task {
         max: number
     }
 
-    const getNextId = idFactory(0, 0x3fffffff)
+    const getNextId = idFactory(0, 0x3fffffff);
 }
 
-export { Task }
+export { Task };

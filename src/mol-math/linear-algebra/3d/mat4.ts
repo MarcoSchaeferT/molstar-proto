@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -17,11 +17,11 @@
  * furnished to do so, subject to the following conditions:
  */
 
-import { EPSILON, equalEps } from './common'
+import { EPSILON, equalEps } from './common';
 import Vec3 from './vec3';
 import Quat from './quat';
 import { degToRad } from '../../misc';
-import { NumberArray } from 'mol-util/type-helpers';
+import { NumberArray } from '../../../mol-util/type-helpers';
 import Mat3 from './mat3';
 
 interface Mat4 extends Array<number> { [d: number]: number, '@type': 'mat4', length: 16 }
@@ -101,12 +101,12 @@ namespace Mat4 {
 
     const _id = identity();
     export function isIdentity(m: Mat4, eps?: number) {
-        return areEqual(m, _id, typeof eps === 'undefined' ? EPSILON.Value : eps);
+        return areEqual(m, _id, typeof eps === 'undefined' ? EPSILON : eps);
     }
 
     export function hasNaN(m: Mat4) {
-        for (let i = 0; i < 16; i++) if (isNaN(m[i])) return true
-        return false
+        for (let i = 0; i < 16; i++) if (isNaN(m[i])) return true;
+        return false;
     }
 
     export function areEqual(a: Mat4, b: Mat4, eps: number) {
@@ -141,26 +141,42 @@ namespace Mat4 {
         out[offset + 13] = a[13];
         out[offset + 14] = a[14];
         out[offset + 15] = a[15];
+        return out;
     }
 
     export function fromArray(a: Mat4, array: NumberArray, offset: number) {
-        a[0] = array[offset + 0]
-        a[1] = array[offset + 1]
-        a[2] = array[offset + 2]
-        a[3] = array[offset + 3]
-        a[4] = array[offset + 4]
-        a[5] = array[offset + 5]
-        a[6] = array[offset + 6]
-        a[7] = array[offset + 7]
-        a[8] = array[offset + 8]
-        a[9] = array[offset + 9]
-        a[10] = array[offset + 10]
-        a[11] = array[offset + 11]
-        a[12] = array[offset + 12]
-        a[13] = array[offset + 13]
-        a[14] = array[offset + 14]
-        a[15] = array[offset + 15]
-        return a
+        a[0] = array[offset + 0];
+        a[1] = array[offset + 1];
+        a[2] = array[offset + 2];
+        a[3] = array[offset + 3];
+        a[4] = array[offset + 4];
+        a[5] = array[offset + 5];
+        a[6] = array[offset + 6];
+        a[7] = array[offset + 7];
+        a[8] = array[offset + 8];
+        a[9] = array[offset + 9];
+        a[10] = array[offset + 10];
+        a[11] = array[offset + 11];
+        a[12] = array[offset + 12];
+        a[13] = array[offset + 13];
+        a[14] = array[offset + 14];
+        a[15] = array[offset + 15];
+        return a;
+    }
+
+    export function fromBasis(a: Mat4, x: Vec3, y: Vec3, z: Vec3) {
+        Mat4.setZero(a);
+        Mat4.setValue(a, 0, 0, x[0]);
+        Mat4.setValue(a, 1, 0, x[1]);
+        Mat4.setValue(a, 2, 0, x[2]);
+        Mat4.setValue(a, 0, 1, y[0]);
+        Mat4.setValue(a, 1, 1, y[1]);
+        Mat4.setValue(a, 2, 1, y[2]);
+        Mat4.setValue(a, 0, 2, z[0]);
+        Mat4.setValue(a, 1, 2, z[1]);
+        Mat4.setValue(a, 2, 2, z[2]);
+        Mat4.setValue(a, 3, 3, 1);
+        return a;
     }
 
     export function copy(out: Mat4, a: Mat4) {
@@ -249,6 +265,31 @@ namespace Mat4 {
             out[1] = (mat[6] + mat[9]) / S;
             out[2] = 0.25 * S;
         }
+
+        return out;
+    }
+
+    export function extractRotation(out: Mat4, mat: Mat4) {
+        const scaleX = 1 / Math.sqrt(mat[0] * mat[0] + mat[1] * mat[1] + mat[2] * mat[2]);
+        const scaleY = 1 / Math.sqrt(mat[4] * mat[4] + mat[5] * mat[5] + mat[6] * mat[6]);
+        const scaleZ = 1 / Math.sqrt(mat[8] * mat[8] + mat[9] * mat[9] + mat[10] * mat[10]);
+
+        out[0] = mat[0] * scaleX;
+        out[1] = mat[1] * scaleX;
+        out[2] = mat[2] * scaleX;
+        out[3] = 0;
+        out[4] = mat[4] * scaleY;
+        out[5] = mat[5] * scaleY;
+        out[6] = mat[6] * scaleY;
+        out[7] = 0;
+        out[8] = mat[8] * scaleZ;
+        out[9] = mat[9] * scaleZ;
+        out[10] = mat[10] * scaleZ;
+        out[11] = 0;
+        out[12] = 0;
+        out[13] = 0;
+        out[14] = 0;
+        out[15] = 1;
 
         return out;
     }
@@ -485,7 +526,7 @@ namespace Mat4 {
         out[2] = view[0];
         out[6] = view[1];
         out[10] = view[2];
-        return out
+        return out;
     }
 
     export function rotate(out: Mat4, a: Mat4, rad: number, axis: Vec3) {
@@ -499,7 +540,7 @@ namespace Mat4 {
             b10, b11, b12,
             b20, b21, b22;
 
-        if (Math.abs(len) < EPSILON.Value) {
+        if (Math.abs(len) < EPSILON) {
             return Mat4.identity();
         }
 
@@ -549,7 +590,7 @@ namespace Mat4 {
             len = Math.sqrt(x * x + y * y + z * z),
             s, c, t;
 
-        if (Math.abs(len) < EPSILON.Value) { return setIdentity(out); }
+        if (Math.abs(len) < EPSILON) { return setIdentity(out); }
 
         len = 1 / len;
         x *= len;
@@ -717,25 +758,60 @@ namespace Mat4 {
      * Check if the matrix has the form
      * [ Rotation    Translation ]
      * [ 0           1           ]
+     *
+     * Allows for improper rotations
      */
     export function isRotationAndTranslation(a: Mat4, eps?: number) {
-        return _isRotationAndTranslation(a, typeof eps !== 'undefined' ? eps : EPSILON.Value)
+        return _isRotationAndTranslation(a, typeof eps !== 'undefined' ? eps : EPSILON);
     }
 
     function _isRotationAndTranslation(a: Mat4, eps: number) {
         const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
             a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7],
             a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11],
-            /* a30 = a[12], a31 = a[13], a32 = a[14],*/ a33 = a[15];
+            a33 = a[15];
 
         if (!equalEps(a33, 1, eps) || !equalEps(a03, 0, eps) || !equalEps(a13, 0, eps) || !equalEps(a23, 0, eps)) {
             return false;
         }
-        const det3x3 = a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20) + a02 * (a10 * a21 - a11 * a20);
+
+        // use `abs` to allow for improper rotations
+        const det3x3 = Math.abs(a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20) + a02 * (a10 * a21 - a11 * a20));
         if (!equalEps(det3x3, 1, eps)) {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Check if the matrix has only translation and uniform scaling
+     * [ S  0  0  X ]
+     * [ 0  S  0  Y ]
+     * [ 0  0  S  Z ]
+     * [ 0  0  0  1 ]
+     */
+    export function isTranslationAndUniformScaling(a: Mat4, eps?: number) {
+        return _isTranslationAndUniformScaling(a, typeof eps !== 'undefined' ? eps : EPSILON);
+    }
+
+    function _isTranslationAndUniformScaling(a: Mat4, eps: number) {
+        const a00 = a[0];
+        return (
+            // 0 base scaling
+            equalEps(a[1], 0, eps) &&
+            equalEps(a[2], 0, eps) &&
+            equalEps(a[3], 0, eps) &&
+            equalEps(a[4], 0, eps) &&
+            equalEps(a[5], a00, eps) &&
+            equalEps(a[6], 0, eps) &&
+            equalEps(a[7], 0, eps) &&
+            equalEps(a[8], 0, eps) &&
+            equalEps(a[9], 0, eps) &&
+            equalEps(a[10], a00, eps) &&
+            equalEps(a[11], 0, eps) &&
+            // 12, 13, 14 translation can be anything
+            equalEps(a[15], 1, eps)
+        );
     }
 
     export function fromQuat(out: Mat4, q: Quat) {
@@ -778,52 +854,32 @@ namespace Mat4 {
     }
 
     /**
-     * Generates a frustum matrix with the given bounds
+     * Generates a perspective projection (frustum) matrix with the given bounds
      */
-    export function frustum(out: Mat4, left: number, right: number, bottom: number, top: number, near: number, far: number) {
-        const rl = 1 / (right - left);
-        const tb = 1 / (top - bottom);
-        const nf = 1 / (near - far);
-        out[0] = (near * 2) * rl;
-        out[1] = 0;
-        out[2] = 0;
-        out[3] = 0;
-        out[4] = 0;
-        out[5] = (near * 2) * tb;
-        out[6] = 0;
-        out[7] = 0;
-        out[8] = (right + left) * rl;
-        out[9] = (top + bottom) * tb;
-        out[10] = (far + near) * nf;
-        out[11] = -1;
-        out[12] = 0;
-        out[13] = 0;
-        out[14] = (far * near * 2) * nf;
-        out[15] = 0;
-        return out;
-    }
+    export function perspective(out: Mat4, left: number, right: number, top: number, bottom: number, near: number, far: number) {
+        const x = 2 * near / (right - left);
+        const y = 2 * near / (top - bottom);
 
-    /**
-     * Generates a perspective projection matrix with the given bounds
-     */
-    export function perspective(out: Mat4, fovy: number, aspect: number, near: number, far: number) {
-        const f = 1.0 / Math.tan(fovy / 2);
-        const nf = 1 / (near - far);
-        out[0] = f / aspect;
+        const a = (right + left) / (right - left);
+        const b = (top + bottom) / (top - bottom);
+        const c = -(far + near) / (far - near);
+        const d = -2 * far * near / (far - near);
+
+        out[0] = x;
         out[1] = 0;
         out[2] = 0;
         out[3] = 0;
         out[4] = 0;
-        out[5] = f;
+        out[5] = y;
         out[6] = 0;
         out[7] = 0;
-        out[8] = 0;
-        out[9] = 0;
-        out[10] = (far + near) * nf;
+        out[8] = a;
+        out[9] = b;
+        out[10] = c;
         out[11] = -1;
         out[12] = 0;
         out[13] = 0;
-        out[14] = (2 * far * near) * nf;
+        out[14] = d;
         out[15] = 0;
         return out;
     }
@@ -831,25 +887,30 @@ namespace Mat4 {
     /**
      * Generates a orthogonal projection matrix with the given bounds
      */
-    export function ortho(out: Mat4, left: number, right: number, bottom: number, top: number, near: number, far: number) {
-        const lr = 1 / (left - right);
-        const bt = 1 / (bottom - top);
-        const nf = 1 / (near - far);
-        out[0] = -2 * lr;
+    export function ortho(out: Mat4, left: number, right: number, top: number, bottom: number, near: number, far: number) {
+        const w = 1.0 / (right - left);
+        const h = 1.0 / (top - bottom);
+        const p = 1.0 / (far - near);
+
+        const x = (right + left) * w;
+        const y = (top + bottom) * h;
+        const z = (far + near) * p;
+
+        out[0] = 2 * w;
         out[1] = 0;
         out[2] = 0;
         out[3] = 0;
         out[4] = 0;
-        out[5] = -2 * bt;
+        out[5] = 2 * h;
         out[6] = 0;
         out[7] = 0;
         out[8] = 0;
         out[9] = 0;
-        out[10] = 2 * nf;
+        out[10] = -2 * p;
         out[11] = 0;
-        out[12] = (left + right) * lr;
-        out[13] = (top + bottom) * bt;
-        out[14] = (far + near) * nf;
+        out[12] = -x;
+        out[13] = -y;
+        out[14] = -z;
         out[15] = 1;
         return out;
     }
@@ -869,9 +930,9 @@ namespace Mat4 {
         const centery = center[1];
         const centerz = center[2];
 
-        if (Math.abs(eyex - centerx) < EPSILON.Value &&
-            Math.abs(eyey - centery) < EPSILON.Value &&
-            Math.abs(eyez - centerz) < EPSILON.Value
+        if (Math.abs(eyex - centerx) < EPSILON &&
+            Math.abs(eyey - centery) < EPSILON &&
+            Math.abs(eyez - centerz) < EPSILON
         ) {
             return setIdentity(out);
         }
@@ -951,7 +1012,7 @@ namespace Mat4 {
             z1 = eyey - target[1],
             z2 = eyez - target[2];
 
-        let len = z0*z0 + z1*z1 + z2*z2;
+        let len = z0 * z0 + z1 * z1 + z2 * z2;
         if (len > 0) {
             len = 1 / Math.sqrt(len);
             z0 *= len;
@@ -963,7 +1024,7 @@ namespace Mat4 {
             x1 = upz * z0 - upx * z2,
             x2 = upx * z1 - upy * z0;
 
-        len = x0*x0 + x1*x1 + x2*x2;
+        len = x0 * x0 + x1 * x1 + x2 * x2;
         if (len > 0) {
             len = 1 / Math.sqrt(len);
             x0 *= len;
@@ -1003,34 +1064,43 @@ namespace Mat4 {
     }
 
     export function getMaxScaleOnAxis(m: Mat4) {
-        const scaleXSq = m[0] * m[0] + m[1] * m[1] + m[2] * m[2]
-        const scaleYSq = m[4] * m[4] + m[5] * m[5] + m[6] * m[6]
-        const scaleZSq = m[8] * m[8] + m[9] * m[9] + m[10] * m[10]
-        return Math.sqrt(Math.max(scaleXSq, scaleYSq, scaleZSq))
+        const scaleXSq = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
+        const scaleYSq = m[4] * m[4] + m[5] * m[5] + m[6] * m[6];
+        const scaleZSq = m[8] * m[8] + m[9] * m[9] + m[10] * m[10];
+        return Math.sqrt(Math.max(scaleXSq, scaleYSq, scaleZSq));
     }
 
+    const xAxis = Vec3.create(1, 0, 0);
+    const yAxis = Vec3.create(0, 1, 0);
+    const zAxis = Vec3.create(0, 0, 1);
+
     /** Rotation matrix for 90deg around x-axis */
-    export const rotX90: ReadonlyMat4 = Mat4.fromRotation(Mat4.identity(), degToRad(90), Vec3.create(1, 0, 0))
+    export const rotX90: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(90), xAxis);
     /** Rotation matrix for 180deg around x-axis */
-    export const rotX180: ReadonlyMat4 = Mat4.fromRotation(Mat4.identity(), degToRad(180), Vec3.create(1, 0, 0))
+    export const rotX180: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(180), xAxis);
     /** Rotation matrix for 90deg around y-axis */
-    export const rotY90: ReadonlyMat4 = Mat4.fromRotation(Mat4.identity(), degToRad(90), Vec3.create(0, 1, 0))
+    export const rotY90: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(90), yAxis);
     /** Rotation matrix for 180deg around y-axis */
-    export const rotY180: ReadonlyMat4 = Mat4.fromRotation(Mat4.identity(), degToRad(180), Vec3.create(0, 1, 0))
+    export const rotY180: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(180), yAxis);
+    /** Rotation matrix for 270deg around y-axis */
+    export const rotY270: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(270), yAxis);
     /** Rotation matrix for 90deg around z-axis */
-    export const rotZ90: ReadonlyMat4 = Mat4.fromRotation(Mat4.identity(), degToRad(90), Vec3.create(0, 0, 1))
+    export const rotZ90: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(90), zAxis);
     /** Rotation matrix for 180deg around z-axis */
-    export const rotZ180: ReadonlyMat4 = Mat4.fromRotation(Mat4.identity(), degToRad(180), Vec3.create(0, 0, 1))
+    export const rotZ180: ReadonlyMat4 = Mat4.fromRotation(Mat4(), degToRad(180), zAxis);
     /** Rotation matrix for 90deg around first x-axis and then y-axis */
-    export const rotXY90: ReadonlyMat4 = Mat4.mul(Mat4.identity(), rotX90, rotY90)
+    export const rotXY90: ReadonlyMat4 = Mat4.mul(Mat4(), rotX90, rotY90);
     /** Rotation matrix for 90deg around first z-axis and then y-axis */
-    export const rotZY90: ReadonlyMat4 = Mat4.mul(Mat4.identity(), rotZ90, rotY90)
+    export const rotZY90: ReadonlyMat4 = Mat4.mul(Mat4(), rotZ90, rotY90);
     /** Rotation matrix for 90deg around first z-axis and then y-axis and then z-axis */
-    export const rotZYZ90: ReadonlyMat4 = Mat4.mul(Mat4.identity(), rotZY90, rotZ90)
+    export const rotZYZ90: ReadonlyMat4 = Mat4.mul(Mat4(), rotZY90, rotZ90);
     /** Rotation matrix for 90deg around first z-axis and then 180deg around x-axis */
-    export const rotZ90X180: ReadonlyMat4 = Mat4.mul(Mat4.identity(), rotZ90, rotX180)
+    export const rotZ90X180: ReadonlyMat4 = Mat4.mul(Mat4(), rotZ90, rotX180);
     /** Rotation matrix for 90deg around first y-axis and then 180deg around z-axis */
-    export const rotY90Z180: ReadonlyMat4 = Mat4.mul(Mat4.identity(), rotY90, rotZ180)
+    export const rotY90Z180: ReadonlyMat4 = Mat4.mul(Mat4(), rotY90, rotZ180);
+
+    /** Identity matrix */
+    export const id: ReadonlyMat4 = Mat4.identity();
 }
 
-export default Mat4
+export default Mat4;

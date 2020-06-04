@@ -5,8 +5,8 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Column } from 'mol-data/db'
-import UUID from 'mol-util/uuid'
+import { Column } from '../../../../../mol-data/db';
+import UUID from '../../../../../mol-util/uuid';
 
 export interface AtomicConformation {
     id: UUID,
@@ -34,6 +34,10 @@ export interface AtomicConformation {
     // Coordinates. Generally, not to be accessed directly because the coordinate might be
     // transformed by an operator. Use Unit.getPosition instead.
 
+    /**
+     * Are xyz coordinates defined?
+     */
+    xyzDefined: boolean,
     /**
      * The x coordinate in angstroms specified according to a set of orthogonal Cartesian axes.
      */

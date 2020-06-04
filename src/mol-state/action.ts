@@ -4,9 +4,9 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Task } from 'mol-task';
-import { UUID } from 'mol-util';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
+import { Task } from '../mol-task';
+import { UUID } from '../mol-util';
+import { ParamDefinition as PD } from '../mol-util/param-definition';
 import { StateObject, StateObjectCell } from './object';
 import { State } from './state';
 import { StateTransformer } from './transformer';
@@ -17,7 +17,9 @@ export { StateAction };
 interface StateAction<A extends StateObject = StateObject, T = any, P extends {} = {}> {
     create(params: P): StateAction.Instance,
     readonly id: UUID,
-    readonly definition: StateAction.Definition<A, T, P>
+    readonly definition: StateAction.Definition<A, T, P>,
+    /** create a fresh copy of the params which can be edited in place */
+    createDefaultParams(a: A, globalCtx: unknown): P
 }
 
 namespace StateAction {
@@ -59,7 +61,8 @@ namespace StateAction {
         const action: StateAction<A, T, P> = {
             create(params) { return { action, params }; },
             id: UUID.create22(),
-            definition
+            definition,
+            createDefaultParams(a, globalCtx) { return definition.params ? PD.getDefaultValues( definition.params(a, globalCtx)) : {} as any; }
         };
         return action;
     }
@@ -75,9 +78,9 @@ namespace StateAction {
                 : void 0,
             run({ cell, state, params }) {
                 const tree = state.build().to(cell.transform.ref).apply(transformer, params);
-                return state.updateTree(tree) as Task<void>;
+                return state.updateTree(tree) as unknown as Task<void>;
             }
-        })
+        });
     }
 
     export namespace Builder {
@@ -104,13 +107,13 @@ namespace StateAction {
                 display: typeof info.display === 'string'
                     ? { name: info.display }
                     : !!info.display
-                    ? info.display
-                    : { name: 'Unnamed State Action' },
+                        ? info.display
+                        : { name: 'Unnamed State Action' },
                 params: typeof info.params === 'object'
                     ? () => info.params as any
                     : !!info.params
-                    ? info.params as any
-                    : void 0,
+                        ? info.params as any
+                        : void 0,
                 isApplicable: info.isApplicable,
                 ...(typeof def === 'function'
                     ? { run: def }

@@ -4,12 +4,13 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Task } from '../task'
-import { RuntimeContext } from './runtime-context'
-import { Progress } from './progress'
-import { now } from 'mol-util/now';
-import { Scheduler } from '../util/scheduler'
-import { UserTiming } from '../util/user-timing'
+import { Task } from '../task';
+import { RuntimeContext } from './runtime-context';
+import { Progress } from './progress';
+import { now } from '../../mol-util/now';
+import { Scheduler } from '../util/scheduler';
+import { UserTiming } from '../util/user-timing';
+import { isDebugMode } from '../../mol-util/debug';
 
 interface ExposedTask<T> extends Task<T> {
     f: (ctx: RuntimeContext) => Promise<T>,
@@ -22,16 +23,17 @@ export function ExecuteObservable<T>(task: Task<T>, observer: Progress.Observer,
     return execute(task as ExposedTask<T>, ctx);
 }
 
+export function CreateObservableCtx<T>(task: Task<T>, observer: Progress.Observer, updateRateMs = 250) {
+    const info = ProgressInfo(task, observer, updateRateMs);
+    return new ObservableRuntimeContext(info, info.root);
+}
+
 export function ExecuteInContext<T>(ctx: RuntimeContext, task: Task<T>) {
     return execute(task as ExposedTask<T>, ctx as ObservableRuntimeContext);
 }
 
 export function ExecuteObservableChild<T>(ctx: RuntimeContext, task: Task<T>, progress?: string | Partial<RuntimeContext.ProgressUpdate>) {
-    return (ctx as ObservableRuntimeContext).runChild(task, progress);
-}
-
-export namespace ExecuteObservable {
-    export let PRINT_ERRORS_TO_STD_ERR = false;
+    return (ctx as ObservableRuntimeContext).runChild(task as ExposedTask<T>, progress);
 }
 
 function defaultProgress(task: Task<any>): Task.Progress {
@@ -92,36 +94,39 @@ function snapshotProgress(info: ProgressInfo): Progress {
 }
 
 async function execute<T>(task: ExposedTask<T>, ctx: ObservableRuntimeContext) {
-    UserTiming.markStart(task)
+    UserTiming.markStart(task);
     ctx.node.progress.startedTime = now();
     try {
         const ret = await task.f(ctx);
-        UserTiming.markEnd(task)
-        UserTiming.measure(task)
+        UserTiming.markEnd(task);
+        UserTiming.measure(task);
         if (ctx.info.abortToken.abortRequested) {
-            abort(ctx.info, ctx.node);
+            abort(ctx.info);
         }
         return ret;
     } catch (e) {
         if (Task.isAbort(e)) {
+            ctx.isAborted = true;
+
             // wait for all child computations to go thru the abort phase.
             if (ctx.node.children.length > 0) {
                 await new Promise(res => { ctx.onChildrenFinished = res; });
             }
-            if (task.onAbort) task.onAbort();
+            if (task.onAbort) {
+                task.onAbort();
+            }
         }
-        if (ExecuteObservable.PRINT_ERRORS_TO_STD_ERR) console.error(e);
+        if (isDebugMode) console.error(e);
         throw e;
     }
 }
 
-function abort(info: ProgressInfo, node: Progress.Node) {
+function abort(info: ProgressInfo) {
     if (!info.abortToken.treeAborted) {
         info.abortToken.treeAborted = true;
         abortTree(info.root);
         notifyObserver(info, now());
     }
-
     throw Task.Aborted(info.abortToken.reason);
 }
 
@@ -149,6 +154,8 @@ class ObservableRuntimeContext implements RuntimeContext {
     isExecuting = true;
     lastUpdatedTime = 0;
 
+    isAborted?: boolean;
+
     node: Progress.Node;
     info: ProgressInfo;
 
@@ -157,7 +164,8 @@ class ObservableRuntimeContext implements RuntimeContext {
 
     private checkAborted() {
         if (this.info.abortToken.abortRequested) {
-            abort(this.info, this.node);
+            this.isAborted = true;
+            abort(this.info);
         }
     }
 
@@ -195,7 +203,7 @@ class ObservableRuntimeContext implements RuntimeContext {
         this.updateProgress(progress);
 
         // TODO: do the shouldNotify check here?
-        if (!!dontNotify /*|| !shouldNotify(this.info, this.lastUpdatedTime)*/) return;
+        if (!!dontNotify /* || !shouldNotify(this.info, this.lastUpdatedTime)*/) return;
 
         notifyObserver(this.info, this.lastUpdatedTime);
 
@@ -205,7 +213,7 @@ class ObservableRuntimeContext implements RuntimeContext {
         return Scheduler.immediatePromise();
     }
 
-    async runChild<T>(task: Task<T>, progress?: string | Partial<RuntimeContext.ProgressUpdate>): Promise<T> {
+    async runChild<T>(task: ExposedTask<T>, progress?: string | Partial<RuntimeContext.ProgressUpdate>): Promise<T> {
         this.updateProgress(progress);
 
         // Create a new child context and add it to the progress tree.
@@ -222,7 +230,7 @@ class ObservableRuntimeContext implements RuntimeContext {
                 // need to catch the error here because otherwise
                 // promises for running child tasks in a tree-like computation
                 // will get orphaned and cause "uncaught error in Promise".
-                return void 0 as any;
+                if (this.isAborted) return void 0 as any;
             }
             throw e;
         } finally {

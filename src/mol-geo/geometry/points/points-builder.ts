@@ -1,11 +1,10 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { ValueCell } from 'mol-util/value-cell'
-import { ChunkedArray } from 'mol-data/util';
+import { ChunkedArray } from '../../../mol-data/util';
 import { Points } from './points';
 
 export interface PointsBuilder {
@@ -24,15 +23,10 @@ export namespace PointsBuilder {
                 ChunkedArray.add(groups, group);
             },
             getPoints: () => {
-                const cb = ChunkedArray.compact(centers, true) as Float32Array
-                const gb = ChunkedArray.compact(groups, true) as Float32Array
-                return {
-                    kind: 'points',
-                    pointCount: centers.elementCount,
-                    centerBuffer: points ? ValueCell.update(points.centerBuffer, cb) : ValueCell.create(cb),
-                    groupBuffer: points ? ValueCell.update(points.groupBuffer, gb) : ValueCell.create(gb),
-                }
+                const cb = ChunkedArray.compact(centers, true) as Float32Array;
+                const gb = ChunkedArray.compact(groups, true) as Float32Array;
+                return Points.create(cb, gb, centers.elementCount, points);
             }
-        }
+        };
     }
 }

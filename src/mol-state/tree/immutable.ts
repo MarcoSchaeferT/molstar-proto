@@ -7,9 +7,8 @@
 import { Map as ImmutableMap, OrderedSet } from 'immutable';
 import { StateTransform } from '../transform';
 import { TransientTree } from './transient';
-import { StateObjectCell } from 'mol-state/object';
 
-export { StateTree }
+export { StateTree };
 
 /**
  * An immutable tree where each node requires a unique reference.
@@ -19,7 +18,8 @@ interface StateTree {
     readonly root: StateTransform,
     readonly transforms: StateTree.Transforms,
     readonly children: StateTree.Children,
-    readonly cellStates: StateTree.CellStates,
+    /** Refs to all nodes that depend on the given key */
+    readonly dependencies: StateTree.Dependencies,
 
     asTransient(): TransientTree
 }
@@ -32,7 +32,9 @@ namespace StateTree {
         readonly values: OrderedSet<Ref>['values'],
         has(ref: Ref): boolean,
         readonly forEach: OrderedSet<Ref>['forEach'],
-        readonly map: OrderedSet<Ref>['map']
+        readonly map: OrderedSet<Ref>['map'],
+        toArray(): Ref[],
+        first(): Ref
     }
 
     interface _Map<T> {
@@ -43,16 +45,16 @@ namespace StateTree {
 
     export interface Transforms extends _Map<StateTransform> {}
     export interface Children extends _Map<ChildSet> { }
-    export interface CellStates extends _Map<StateObjectCell.State> { }
+    export interface Dependencies extends _Map<ChildSet> { }
 
     class Impl implements StateTree {
-        get root() { return this.transforms.get(StateTransform.RootRef)! }
+        get root() { return this.transforms.get(StateTransform.RootRef)!; }
 
         asTransient(): TransientTree {
             return new TransientTree(this);
         }
 
-        constructor(public transforms: StateTree.Transforms, public children: Children, public cellStates: CellStates) {
+        constructor(public transforms: Transforms, public children: Children, public dependencies: Dependencies) {
         }
     }
 
@@ -61,11 +63,11 @@ namespace StateTree {
      */
     export function createEmpty(customRoot?: StateTransform): StateTree {
         const root = customRoot || StateTransform.createRoot();
-        return create(ImmutableMap([[root.ref, root]]), ImmutableMap([[root.ref, OrderedSet()]]), ImmutableMap([[root.ref, StateObjectCell.DefaultState]]));
+        return create(ImmutableMap([[root.ref, root]]), ImmutableMap([[root.ref, OrderedSet()]]), ImmutableMap());
     }
 
-    export function create(nodes: Transforms, children: Children, cellStates: CellStates): StateTree {
-        return new Impl(nodes, children, cellStates);
+    export function create(nodes: Transforms, children: Children, dependencies: Dependencies): StateTree {
+        return new Impl(nodes, children, dependencies);
     }
 
     type VisitorCtx = { tree: StateTree, state: any, f: (node: StateTransform, tree: StateTree, state: any) => boolean | undefined | void };
@@ -116,19 +118,19 @@ namespace StateTree {
         return doPostOrder<StateTransform[]>(tree, root, [], _subtree);
     }
 
-    function _visitNodeToJson(node: StateTransform, tree: StateTree, ctx: [StateTransform.Serialized, StateObjectCell.State][]) {
+    function _visitNodeToJson(node: StateTransform, tree: StateTree, ctx: StateTransform.Serialized[]) {
         // const children: Ref[] = [];
         // tree.children.get(node.ref).forEach(_visitChildToJson as any, children);
-        ctx.push([StateTransform.toJSON(node), tree.cellStates.get(node.ref)]);
+        ctx.push(StateTransform.toJSON(node));
     }
 
     export interface Serialized {
         /** Transforms serialized in pre-order */
-        transforms: [StateTransform.Serialized, StateObjectCell.State][]
+        transforms: StateTransform.Serialized[]
     }
 
     export function toJSON(tree: StateTree): Serialized {
-        const transforms: [StateTransform.Serialized, StateObjectCell.State][] = [];
+        const transforms: StateTransform.Serialized[] = [];
         doPreOrder(tree, tree.root, transforms, _visitNodeToJson);
         return { transforms };
     }
@@ -136,12 +138,11 @@ namespace StateTree {
     export function fromJSON(data: Serialized): StateTree {
         const nodes = ImmutableMap<Ref, StateTransform>().asMutable();
         const children = ImmutableMap<Ref, OrderedSet<Ref>>().asMutable();
-        const cellStates = ImmutableMap<Ref, StateObjectCell.State>().asMutable();
+        const dependencies = ImmutableMap<Ref, OrderedSet<Ref>>().asMutable();
 
         for (const t of data.transforms) {
-            const transform = StateTransform.fromJSON(t[0]);
+            const transform = StateTransform.fromJSON(t);
             nodes.set(transform.ref, transform);
-            cellStates.set(transform.ref, t[1]);
 
             if (!children.has(transform.ref)) {
                 children.set(transform.ref, OrderedSet<Ref>().asMutable());
@@ -150,20 +151,60 @@ namespace StateTree {
             if (transform.ref !== transform.parent) children.get(transform.parent).add(transform.ref);
         }
 
+        const dependent = new Set<Ref>();
         for (const t of data.transforms) {
-            const ref = t[0].ref;
+            const ref = t.ref;
             children.set(ref, children.get(ref).asImmutable());
+
+            if (!t.dependsOn) continue;
+
+            for (const d of t.dependsOn) {
+                dependent.add(d);
+                if (!dependencies.has(d)) {
+                    dependencies.set(d, OrderedSet<Ref>([ref]).asMutable());
+                } else {
+                    dependencies.get(d).add(ref);
+                }
+            }
         }
 
-        return create(nodes.asImmutable(), children.asImmutable(), cellStates.asImmutable());
+        dependent.forEach(d => {
+            dependencies.set(d, dependencies.get(d).asImmutable());
+        });
+
+        return create(nodes.asImmutable(), children.asImmutable(), dependencies.asImmutable());
     }
 
     export function dump(tree: StateTree) {
         console.log({
             tr: (tree.transforms as ImmutableMap<any, any>).keySeq().toArray(),
             tr1: (tree.transforms as ImmutableMap<any, any>).valueSeq().toArray().map(t => t.ref),
-            ch: (tree.children as ImmutableMap<any, any>).keySeq().toArray(),
-            cs: (tree.cellStates as ImmutableMap<any, any>).keySeq().toArray()
+            ch: (tree.children as ImmutableMap<any, any>).keySeq().toArray()
         });
+    }
+
+    function _subtreeHasRef(tree: StateTree, root: StateTransform.Ref, ref: StateTransform.Ref) {
+        if (root === ref) return true;
+        const children = tree.children.get(root);
+        const it = children.values();
+        while (true) {
+            const next = it.next();
+            if (next.done) return false;
+            if (_subtreeHasRef(tree, next.value, ref)) return true;
+        }
+    }
+
+    /** Check if the subtree with the given root has the provided ref */
+    export function subtreeHasRef(tree: StateTree, root: StateTransform.Ref, ref: StateTransform.Ref): boolean {
+        if (!tree.transforms.has(root) || !tree.transforms.has(ref)) return false;
+        return _subtreeHasRef(tree, root, ref);
+    }
+
+    export function getDecoratorRoot(tree: StateTree, ref: StateTransform.Ref): StateTransform.Ref {
+        const children = tree.children.get(ref);
+        if (children.size !== 1) return ref;
+        const child = tree.transforms.get(children.first());
+        if (child.transformer.definition.isDecorator) return getDecoratorRoot(tree, child.ref);
+        return ref;
     }
 }

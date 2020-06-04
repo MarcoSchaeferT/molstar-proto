@@ -25,9 +25,10 @@
 import Mat3 from './mat3';
 import Vec3 from './vec3';
 import { EPSILON } from './common';
-import { NumberArray } from 'mol-util/type-helpers';
+import { NumberArray } from '../../../mol-util/type-helpers';
 
 interface Quat extends Array<number> { [d: number]: number, '@type': 'quat', length: 4 }
+interface ReadonlyQuat extends Array<number> { readonly [d: number]: number, '@type': 'quat', length: 4 }
 
 function Quat() {
     return Quat.zero();
@@ -55,7 +56,7 @@ namespace Quat {
     }
 
     export function hasNaN(q: Quat) {
-        return isNaN(q[0]) || isNaN(q[1]) || isNaN(q[2]) || isNaN(q[3])
+        return isNaN(q[0]) || isNaN(q[1]) || isNaN(q[2]) || isNaN(q[3]);
     }
 
     export function create(x: number, y: number, z: number, w: number) {
@@ -183,11 +184,11 @@ namespace Quat {
         cosom = ax * bx + ay * by + az * bz + aw * bw;
         // adjust signs (if necessary)
         if ( cosom < 0.0 ) {
-        cosom = -cosom;
-        bx = - bx;
-        by = - by;
-        bz = - bz;
-        bw = - bw;
+            cosom = -cosom;
+            bx = - bx;
+            by = - by;
+            bz = - bz;
+            bw = - bw;
         }
         // calculate coefficients
         if ( (1.0 - cosom) > 0.000001 ) {
@@ -214,7 +215,7 @@ namespace Quat {
     export function invert(out: Quat, a: Quat) {
         let a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
         let dot = a0 * a0 + a1 * a1 + a2 * a2 + a3 * a3;
-        let invDot = dot ? 1.0/dot : 0;
+        let invDot = dot ? 1.0 / dot : 0;
 
         // TODO: Would be faster to return [0,0,0,0] immediately if dot == 0
 
@@ -253,55 +254,55 @@ namespace Quat {
             // |w| > 1/2, may as well choose w > 1/2
             fRoot = Math.sqrt(fTrace + 1.0);  // 2w
             out[3] = 0.5 * fRoot;
-            fRoot = 0.5/fRoot;  // 1/(4w)
-            out[0] = (m[5]-m[7])*fRoot;
-            out[1] = (m[6]-m[2])*fRoot;
-            out[2] = (m[1]-m[3])*fRoot;
-            } else {
+            fRoot = 0.5 / fRoot;  // 1/(4w)
+            out[0] = (m[5] - m[7]) * fRoot;
+            out[1] = (m[6] - m[2]) * fRoot;
+            out[2] = (m[1] - m[3]) * fRoot;
+        } else {
             // |w| <= 1/2
             let i = 0;
             if ( m[4] > m[0] ) i = 1;
-            if ( m[8] > m[i*3+i] ) i = 2;
-            let j = (i+1)%3;
-            let k = (i+2)%3;
+            if ( m[8] > m[i * 3 + i] ) i = 2;
+            let j = (i + 1) % 3;
+            let k = (i + 2) % 3;
 
-            fRoot = Math.sqrt(m[i*3+i]-m[j*3+j]-m[k*3+k] + 1.0);
+            fRoot = Math.sqrt(m[i * 3 + i] - m[j * 3 + j] - m[k * 3 + k] + 1.0);
             out[i] = 0.5 * fRoot;
             fRoot = 0.5 / fRoot;
-            out[3] = (m[j*3+k] - m[k*3+j]) * fRoot;
-            out[j] = (m[j*3+i] + m[i*3+j]) * fRoot;
-            out[k] = (m[k*3+i] + m[i*3+k]) * fRoot;
+            out[3] = (m[j * 3 + k] - m[k * 3 + j]) * fRoot;
+            out[j] = (m[j * 3 + i] + m[i * 3 + j]) * fRoot;
+            out[k] = (m[k * 3 + i] + m[i * 3 + k]) * fRoot;
         }
 
         return out;
     }
 
-    const fromUnitVec3Temp = Vec3.zero()
+    const fromUnitVec3Temp = Vec3();
     /** Quaternion from two normalized unit vectors. */
     export function fromUnitVec3 (out: Quat, a: Vec3, b: Vec3) {
         // assumes a and b are normalized
-        let r = Vec3.dot(a, b) + 1
-        if (r < EPSILON.Value) {
+        let r = Vec3.dot(a, b) + 1;
+        if (r < EPSILON) {
             // If u and v are exactly opposite, rotate 180 degrees
             // around an arbitrary orthogonal axis. Axis normalisation
             // can happen later, when we normalise the quaternion.
-            r = 0
+            r = 0;
             if (Math.abs(a[0]) > Math.abs(a[2])) {
-                Vec3.set(fromUnitVec3Temp, -a[1], a[0], 0)
+                Vec3.set(fromUnitVec3Temp, -a[1], a[0], 0);
             } else {
-                Vec3.set(fromUnitVec3Temp, 0, -a[2], a[1])
+                Vec3.set(fromUnitVec3Temp, 0, -a[2], a[1]);
             }
         } else {
             // Otherwise, build quaternion the standard way.
-            Vec3.cross(fromUnitVec3Temp, a, b)
+            Vec3.cross(fromUnitVec3Temp, a, b);
         }
 
-        out[0] = fromUnitVec3Temp[0]
-        out[1] = fromUnitVec3Temp[1]
-        out[2] = fromUnitVec3Temp[2]
-        out[3] = r
-        normalize(out, out)
-        return out
+        out[0] = fromUnitVec3Temp[0];
+        out[1] = fromUnitVec3Temp[1];
+        out[2] = fromUnitVec3Temp[2];
+        out[3] = r;
+        normalize(out, out);
+        return out;
     }
 
     export function clone(a: Quat) {
@@ -318,14 +319,15 @@ namespace Quat {
         out[offset + 1] = a[1];
         out[offset + 2] = a[2];
         out[offset + 3] = a[3];
+        return out;
     }
 
     export function fromArray(a: Quat, array: NumberArray, offset: number) {
-        a[0] = array[offset + 0]
-        a[1] = array[offset + 1]
-        a[2] = array[offset + 2]
-        a[3] = array[offset + 3]
-        return a
+        a[0] = array[offset + 0];
+        a[1] = array[offset + 1];
+        a[2] = array[offset + 2];
+        a[3] = array[offset + 3];
+        return a;
     }
 
     export function copy(out: Quat, a: Quat) {
@@ -357,7 +359,7 @@ namespace Quat {
         let y = a[1];
         let z = a[2];
         let w = a[3];
-        let len = x*x + y*y + z*z + w*w;
+        let len = x * x + y * y + z * z + w * w;
         if (len > 0) {
             len = 1 / Math.sqrt(len);
             out[0] = x * len;
@@ -374,7 +376,7 @@ namespace Quat {
      *
      * Both vectors are assumed to be unit length.
      */
-    const rotTmpVec3 = Vec3.zero();
+    const rotTmpVec3 = Vec3();
     const rotTmpVec3UnitX = Vec3.create(1, 0, 0);
     const rotTmpVec3UnitY = Vec3.create(0, 1, 0);
     export function rotationTo(out: Quat, a: Vec3, b: Vec3) {
@@ -382,7 +384,7 @@ namespace Quat {
         if (dot < -0.999999) {
             Vec3.cross(rotTmpVec3, rotTmpVec3UnitX, a);
             if (Vec3.magnitude(rotTmpVec3) < 0.000001)
-            Vec3.cross(rotTmpVec3, rotTmpVec3UnitY, a);
+                Vec3.cross(rotTmpVec3, rotTmpVec3UnitY, a);
             Vec3.normalize(rotTmpVec3, rotTmpVec3);
             setAxisAngle(out, rotTmpVec3, Math.PI);
             return out;
@@ -405,8 +407,8 @@ namespace Quat {
     /**
      * Performs a spherical linear interpolation with two control points
      */
-    let sqlerpTemp1 = Quat.zero();
-    let sqlerpTemp2 = Quat.zero();
+    let sqlerpTemp1 = Quat();
+    let sqlerpTemp2 = Quat();
     export function sqlerp(out: Quat, a: Quat, b: Quat, c: Quat, d: Quat, t: number) {
         slerp(sqlerpTemp1, a, d, t);
         slerp(sqlerpTemp2, b, c, t);
@@ -419,7 +421,7 @@ namespace Quat {
      * axes. Each axis is a vec3 and is expected to be unit length and
      * perpendicular to all other specified axes.
      */
-    const axesTmpMat = Mat3.zero();
+    const axesTmpMat = Mat3();
     export function setAxes(out: Quat, view: Vec3, right: Vec3, up: Vec3) {
         axesTmpMat[0] = right[0];
         axesTmpMat[3] = right[1];
@@ -435,6 +437,12 @@ namespace Quat {
 
         return normalize(out, Quat.fromMat3(out, axesTmpMat));
     }
+
+    export function toString(a: Quat, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)} ${a[2].toPrecision(precision)}  ${a[3].toPrecision(precision)}]`;
+    }
+
+    export const Identity: ReadonlyQuat = identity();
 }
 
-export default Quat
+export default Quat;

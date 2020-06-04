@@ -1,191 +1,142 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import Matrix from './matrix';
 import { Vec3 } from '../3d';
-// import { Vec3, Mat4 } from '../3d.js';
 import { svd } from './svd';
+import { NumberArray } from '../../../mol-util/type-helpers';
+import { Axes3D } from '../../geometry';
 
-// const negateVector = Vec3.create(-1, -1, -1)
-// const tmpMatrix = Mat4.identity()
+export { PrincipalAxes };
 
-/**
- * Principal axes
- */
-class PrincipalAxes {
-    begA: Vec3
-    endA: Vec3
-    begB: Vec3
-    endB: Vec3
-    begC: Vec3
-    endC: Vec3
-
-    center: Vec3
-
-    vecA: Vec3
-    vecB: Vec3
-    vecC: Vec3
-
-    normVecA: Vec3
-    normVecB: Vec3
-    normVecC: Vec3
-
-    /**
-     * points is a 3xN matrix
-     */
-    constructor(points: Matrix) {
-        const n = points.rows
-        const n3 = n / 3
-        const pointsT = Matrix.create(n, 3)
-        const A = Matrix.create(3, 3)
-        const W = Matrix.create(1, 3)
-        const U = Matrix.create(3, 3)
-        const V = Matrix.create(3, 3)
-
-        // calculate
-        const mean = Matrix.meanRows(points)
-        Matrix.subRows(points, mean)
-        Matrix.transpose(pointsT, points)
-        Matrix.multiplyABt(A, pointsT, pointsT)
-        svd(A, W, U, V)
-
-        // center
-        const vm = Vec3.create(mean[0], mean[1], mean[2])
-
-        // normalized
-        const van = Vec3.create(U.data[0], U.data[3], U.data[6])
-        const vbn = Vec3.create(U.data[1], U.data[4], U.data[7])
-        const vcn = Vec3.create(U.data[2], U.data[5], U.data[8])
-
-        // scaled
-        const va = Vec3.scale(Vec3.zero(), van, Math.sqrt(W.data[0] / n3))
-        const vb = Vec3.scale(Vec3.zero(), vbn, Math.sqrt(W.data[1] / n3))
-        const vc = Vec3.scale(Vec3.zero(), vcn, Math.sqrt(W.data[2] / n3))
-        // const va = van.clone().multiplyScalar(Math.sqrt(W.data[0] / n3))
-        // const vb = vbn.clone().multiplyScalar(Math.sqrt(W.data[1] / n3))
-        // const vc = vcn.clone().multiplyScalar(Math.sqrt(W.data[2] / n3))
-
-        // points
-        this.begA = Vec3.sub(Vec3.clone(vm), vm, va)
-        this.endA = Vec3.add(Vec3.clone(vm), vm, va)
-        this.begB = Vec3.sub(Vec3.clone(vm), vm, vb)
-        this.endB = Vec3.add(Vec3.clone(vm), vm, vb)
-        this.begC = Vec3.sub(Vec3.clone(vm), vm, vc)
-        this.endC = Vec3.add(Vec3.clone(vm), vm, vc)
-        // this.begA = vm.clone().sub(va)
-        // this.endA = vm.clone().add(va)
-        // this.begB = vm.clone().sub(vb)
-        // this.endB = vm.clone().add(vb)
-        // this.begC = vm.clone().sub(vc)
-        // this.endC = vm.clone().add(vc)
-
-        //
-
-        this.center = vm
-
-        this.vecA = va
-        this.vecB = vb
-        this.vecC = vc
-
-        this.normVecA = van
-        this.normVecB = vbn
-        this.normVecC = vcn
-    }
-
-    // TODO
-    // /**
-    //  * Get the basis matrix descriping the axes
-    //  * @param  {Matrix4} [optionalTarget] - target object
-    //  * @return {Matrix4} the basis
-    //  */
-    // getBasisMatrix(optionalTarget = new Matrix4()) {
-    //     const basis = optionalTarget
-
-    //     basis.makeBasis(this.normVecB, this.normVecA, this.normVecC)
-    //     if (basis.determinant() < 0) {
-    //         basis.scale(negateVector)
-    //     }
-
-    //     return basis
-    // }
-
-    // TODO
-    // /**
-    //  * Get a quaternion descriping the axes rotation
-    //  * @param  {Quaternion} [optionalTarget] - target object
-    //  * @return {Quaternion} the rotation
-    //  */
-    // getRotationQuaternion(optionalTarget = new Quaternion()) {
-    //     const q = optionalTarget
-    //     q.setFromRotationMatrix(this.getBasisMatrix(tmpMatrix))
-
-    //     return q.inverse()
-    // }
-
-    // TODO
-    // /**
-    //  * Get the scale/length for each dimension for a box around the axes
-    //  * to enclose the atoms of a structure
-    //  * @param  {Structure|StructureView} structure - the structure
-    //  * @return {{d1a: Number, d2a: Number, d3a: Number, d1b: Number, d2b: Number, d3b: Number}} scale
-    //  */
-    // getProjectedScaleForAtoms(structure: Structure) {
-    //     let d1a = -Infinity
-    //     let d1b = -Infinity
-    //     let d2a = -Infinity
-    //     let d2b = -Infinity
-    //     let d3a = -Infinity
-    //     let d3b = -Infinity
-
-    //     const p = new Vector3()
-    //     const t = new Vector3()
-
-    //     const center = this.center
-    //     const ax1 = this.normVecA
-    //     const ax2 = this.normVecB
-    //     const ax3 = this.normVecC
-
-    //     structure.eachAtom(function (ap: AtomProxy) {
-    //         projectPointOnVector(p.copy(ap as any), ax1, center)  // TODO
-    //         const dp1 = t.subVectors(p, center).normalize().dot(ax1)
-    //         const dt1 = p.distanceTo(center)
-    //         if (dp1 > 0) {
-    //             if (dt1 > d1a) d1a = dt1
-    //         } else {
-    //             if (dt1 > d1b) d1b = dt1
-    //         }
-
-    //         projectPointOnVector(p.copy(ap as any), ax2, center)
-    //         const dp2 = t.subVectors(p, center).normalize().dot(ax2)
-    //         const dt2 = p.distanceTo(center)
-    //         if (dp2 > 0) {
-    //             if (dt2 > d2a) d2a = dt2
-    //         } else {
-    //             if (dt2 > d2b) d2b = dt2
-    //         }
-
-    //         projectPointOnVector(p.copy(ap as any), ax3, center)
-    //         const dp3 = t.subVectors(p, center).normalize().dot(ax3)
-    //         const dt3 = p.distanceTo(center)
-    //         if (dp3 > 0) {
-    //             if (dt3 > d3a) d3a = dt3
-    //         } else {
-    //             if (dt3 > d3b) d3b = dt3
-    //         }
-    //     })
-
-    //     return {
-    //         d1a: d1a,
-    //         d2a: d2a,
-    //         d3a: d3a,
-    //         d1b: -d1b,
-    //         d2b: -d2b,
-    //         d3b: -d3b
-    //     }
-    // }
+interface PrincipalAxes {
+    momentsAxes: Axes3D
+    boxAxes: Axes3D
 }
 
-export default PrincipalAxes
+namespace PrincipalAxes {
+    export function ofPositions(positions: NumberArray): PrincipalAxes {
+        const momentsAxes = calculateMomentsAxes(positions);
+        const boxAxes = calculateBoxAxes(positions, momentsAxes);
+        return { momentsAxes, boxAxes };
+    }
+
+    export function calculateMomentsAxes(positions: NumberArray): Axes3D {
+        if (positions.length === 3) {
+            return Axes3D.create(Vec3.fromArray(Vec3(), positions, 0), Vec3.create(1, 0, 0), Vec3.create(0, 1, 0), Vec3.create(0, 1, 0));
+        }
+
+        const points = Matrix.fromArray(positions, 3, positions.length / 3);
+        const n = points.rows;
+        const n3 = n / 3;
+        const A = Matrix.create(3, 3);
+        const W = Matrix.create(1, 3);
+        const U = Matrix.create(3, 3);
+        const V = Matrix.create(3, 3);
+
+        // calculate
+        const mean = Matrix.meanRows(points);
+        const pointsM = Matrix.subRows(Matrix.clone(points), mean);
+        const pointsT = Matrix.transpose(Matrix.create(n, 3), pointsM);
+        Matrix.multiplyABt(A, pointsT, pointsT);
+        svd(A, W, U, V);
+
+        // origin
+        const origin = Vec3.create(mean[0], mean[1], mean[2]);
+
+        // directions
+        const dirA = Vec3.create(U.data[0], U.data[3], U.data[6]);
+        const dirB = Vec3.create(U.data[1], U.data[4], U.data[7]);
+        const dirC = Vec3.create(U.data[2], U.data[5], U.data[8]);
+        Vec3.scale(dirA, dirA, Math.sqrt(W.data[0] / n3));
+        Vec3.scale(dirB, dirB, Math.sqrt(W.data[1] / n3));
+        Vec3.scale(dirC, dirC, Math.sqrt(W.data[2] / n3));
+
+        return Axes3D.create(origin, dirA, dirB, dirC);
+    }
+
+    const tmpBoxVec = Vec3();
+    const tmpBoxVecA = Vec3();
+    const tmpBoxVecB = Vec3();
+    const tmpBoxVecC = Vec3();
+    /**
+     * Get the scale/length for each dimension for a box around the axes
+     * to enclose the given positions
+     */
+    export function calculateBoxAxes(positions: NumberArray, momentsAxes: Axes3D): Axes3D {
+        if (positions.length === 3) {
+            return Axes3D.clone(momentsAxes);
+        }
+
+        let d1a = -Infinity;
+        let d1b = -Infinity;
+        let d2a = -Infinity;
+        let d2b = -Infinity;
+        let d3a = -Infinity;
+        let d3b = -Infinity;
+
+        const p = Vec3();
+        const t = Vec3();
+
+        const center = momentsAxes.origin;
+        const normVecA = Vec3.normalize(tmpBoxVecA, momentsAxes.dirA);
+        const normVecB = Vec3.normalize(tmpBoxVecB, momentsAxes.dirB);
+        const normVecC = Vec3.normalize(tmpBoxVecC, momentsAxes.dirC);
+
+        for (let i = 0, il = positions.length; i < il; i += 3) {
+            Vec3.projectPointOnVector(p, Vec3.fromArray(p, positions, i), normVecA, center);
+            const dp1 = Vec3.dot(normVecA, Vec3.normalize(t, Vec3.sub(t, p, center)));
+            const dt1 = Vec3.distance(p, center);
+            if (dp1 > 0) {
+                if (dt1 > d1a) d1a = dt1;
+            } else {
+                if (dt1 > d1b) d1b = dt1;
+            }
+
+            Vec3.projectPointOnVector(p, Vec3.fromArray(p, positions, i), normVecB, center);
+            const dp2 = Vec3.dot(normVecB, Vec3.normalize(t, Vec3.sub(t, p, center)));
+            const dt2 = Vec3.distance(p, center);
+            if (dp2 > 0) {
+                if (dt2 > d2a) d2a = dt2;
+            } else {
+                if (dt2 > d2b) d2b = dt2;
+            }
+
+            Vec3.projectPointOnVector(p, Vec3.fromArray(p, positions, i), normVecC, center);
+            const dp3 = Vec3.dot(normVecC, Vec3.normalize(t, Vec3.sub(t, p, center)));
+            const dt3 = Vec3.distance(p, center);
+            if (dp3 > 0) {
+                if (dt3 > d3a) d3a = dt3;
+            } else {
+                if (dt3 > d3b) d3b = dt3;
+            }
+        }
+
+        const dirA = Vec3.setMagnitude(Vec3(), normVecA, (d1a + d1b) / 2);
+        const dirB = Vec3.setMagnitude(Vec3(), normVecB, (d2a + d2b) / 2);
+        const dirC = Vec3.setMagnitude(Vec3(), normVecC, (d3a + d3b) / 2);
+
+        const origin = Vec3();
+        const addCornerHelper = function (d1: number, d2: number, d3: number) {
+            Vec3.copy(tmpBoxVec, center);
+            Vec3.scaleAndAdd(tmpBoxVec, tmpBoxVec, normVecA, d1);
+            Vec3.scaleAndAdd(tmpBoxVec, tmpBoxVec, normVecB, d2);
+            Vec3.scaleAndAdd(tmpBoxVec, tmpBoxVec, normVecC, d3);
+            Vec3.add(origin, origin, tmpBoxVec);
+        };
+        addCornerHelper(d1a, d2a, d3a);
+        addCornerHelper(d1a, d2a, -d3b);
+        addCornerHelper(d1a, -d2b, -d3b);
+        addCornerHelper(d1a, -d2b, d3a);
+        addCornerHelper(-d1b, -d2b, -d3b);
+        addCornerHelper(-d1b, -d2b, d3a);
+        addCornerHelper(-d1b, d2a, d3a);
+        addCornerHelper(-d1b, d2a, -d3b);
+        Vec3.scale(origin, origin, 1 / 8);
+
+        return Axes3D.create(origin, dirA, dirB, dirC);
+    }
+}

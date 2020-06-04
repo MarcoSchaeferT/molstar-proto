@@ -1,34 +1,35 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Result, Lookup3D } from './common'
+import { Result, Lookup3D } from './common';
 import { Box3D } from '../primitives/box3d';
 import { Sphere3D } from '../primitives/sphere3d';
 import { PositionData } from '../common';
 import { Vec3 } from '../../linear-algebra';
-import { OrderedSet } from 'mol-data/int';
-import { BoundaryHelper } from '../boundary-helper';
+import { OrderedSet } from '../../../mol-data/int';
+import { Boundary } from '../../../mol-model/structure/structure/util/boundary';
 
 interface GridLookup3D<T = number> extends Lookup3D<T> {
     readonly buckets: { readonly offset: ArrayLike<number>, readonly count: ArrayLike<number>, readonly array: ArrayLike<number> }
 }
 
-function GridLookup3D(data: PositionData, cellSizeOrCount?: Vec3 | number): GridLookup3D {
-    return new GridLookup3DImpl(data, cellSizeOrCount);
+function GridLookup3D<T extends number = number>(data: PositionData, boundary: Boundary, cellSizeOrCount?: Vec3 | number): GridLookup3D<T> {
+    return new GridLookup3DImpl<T>(data, boundary, cellSizeOrCount);
 }
 
-export { GridLookup3D }
+export { GridLookup3D };
 
-class GridLookup3DImpl implements GridLookup3D<number> {
-    private ctx: QueryContext;
+class GridLookup3DImpl<T extends number = number> implements GridLookup3D<T> {
+    private ctx: QueryContext<T>;
     boundary: Lookup3D['boundary'];
     buckets: GridLookup3D['buckets'];
+    result: Result<T>
 
-    find(x: number, y: number, z: number, radius: number): Result<number> {
+    find(x: number, y: number, z: number, radius: number): Result<T> {
         this.ctx.x = x;
         this.ctx.y = y;
         this.ctx.z = z;
@@ -47,11 +48,12 @@ class GridLookup3DImpl implements GridLookup3D<number> {
         return query(this.ctx);
     }
 
-    constructor(data: PositionData, cellSizeOrCount?: Vec3 | number) {
-        const structure = build(data, cellSizeOrCount);
-        this.ctx = createContext(structure);
+    constructor(data: PositionData, boundary: Boundary, cellSizeOrCount?: Vec3 | number) {
+        const structure = build(data, boundary, cellSizeOrCount);
+        this.ctx = createContext<T>(structure);
         this.boundary = { box: structure.boundingBox, sphere: structure.boundingSphere };
         this.buckets = { offset: structure.bucketOffset, count: structure.bucketCounts, array: structure.bucketArray };
+        this.result = this.ctx.result;
     }
 }
 
@@ -102,7 +104,7 @@ function _build(state: BuildState): Grid3D {
     let bucketCount = 0;
     const grid = new Uint32Array(n);
     const bucketIndex = new Int32Array(elementCount);
-    for (let t = 0, _t = OrderedSet.size(indices); t < _t; t++) {
+    for (let t = 0; t < elementCount; t++) {
         const i = OrderedSet.getAt(indices, t);
         const x = Math.floor((px[i] - minX) / delta[0]);
         const y = Math.floor((py[i] - minY) / delta[1]);
@@ -110,13 +112,13 @@ function _build(state: BuildState): Grid3D {
         const idx = (((x * sY) + y) * sZ) + z;
 
         if ((grid[idx] += 1) === 1) {
-            bucketCount += 1
+            bucketCount += 1;
         }
         bucketIndex[t] = idx;
     }
 
     if (radius) {
-        for (let t = 0, _t = OrderedSet.size(indices); t < _t; t++) {
+        for (let t = 0; t < elementCount; t++) {
             const i = OrderedSet.getAt(indices, t);
             if (radius[i] > maxRadius) maxRadius = radius[i];
         }
@@ -140,7 +142,7 @@ function _build(state: BuildState): Grid3D {
     const bucketFill = new Int32Array(bucketCount);
     const bucketArray = new Int32Array(elementCount);
     for (let i = 0; i < elementCount; i++) {
-        const bucketIdx = grid[bucketIndex[i]]
+        const bucketIdx = grid[bucketIndex[i]];
         if (bucketIdx > 0) {
             const k = bucketIdx - 1;
             bucketArray[bucketOffset[k] + bucketFill[k]] = i;
@@ -161,42 +163,21 @@ function _build(state: BuildState): Grid3D {
         expandedBox: state.expandedBox,
         boundingBox: state.boundingBox,
         boundingSphere: state.boundingSphere
-    }
+    };
 }
 
-const boundaryHelper = new BoundaryHelper();
-function getBoundary(data: PositionData) {
-    const { x, y, z, radius, indices } = data;
-    const p = Vec3.zero();
-    boundaryHelper.reset(0);
-    for (let t = 0, _t = OrderedSet.size(indices); t < _t; t++) {
-        const i = OrderedSet.getAt(indices, t);
-        Vec3.set(p, x[i], y[i], z[i]);
-        boundaryHelper.boundaryStep(p, (radius && radius[i]) || 0);
-    }
-    boundaryHelper.finishBoundaryStep();
-    for (let t = 0, _t = OrderedSet.size(indices); t < _t; t++) {
-        const i = OrderedSet.getAt(indices, t);
-        Vec3.set(p, x[i], y[i], z[i]);
-        boundaryHelper.extendStep(p, (radius && radius[i]) || 0);
-    }
-
-    return { boundingBox: boundaryHelper.getBox(), boundingSphere: boundaryHelper.getSphere() };
-}
-
-function build(data: PositionData, cellSizeOrCount?: Vec3 | number) {
-    const { boundingBox, boundingSphere } = getBoundary(data);
+function build(data: PositionData, boundary: Boundary, cellSizeOrCount?: Vec3 | number) {
     // need to expand the grid bounds to avoid rounding errors
-    const expandedBox = Box3D.expand(Box3D.empty(), boundingBox, Vec3.create(0.5, 0.5, 0.5));
+    const expandedBox = Box3D.expand(Box3D.empty(), boundary.box, Vec3.create(0.5, 0.5, 0.5));
     const { indices } = data;
 
-    const S = Vec3.sub(Vec3.zero(), expandedBox.max, expandedBox.min);
+    const S = Box3D.size(Vec3.zero(), expandedBox);
     let delta, size;
 
     const elementCount = OrderedSet.size(indices);
 
-    const cellCount = typeof cellSizeOrCount === 'number' ? cellSizeOrCount : 32
-    const cellSize = Array.isArray(cellSizeOrCount) && cellSizeOrCount
+    const cellCount = typeof cellSizeOrCount === 'number' ? cellSizeOrCount : 32;
+    const cellSize = Array.isArray(cellSizeOrCount) && cellSizeOrCount;
 
     if (cellSize) {
         size = [Math.ceil(S[0] / cellSize[0]), Math.ceil(S[1] / cellSize[1]), Math.ceil(S[2] / cellSize[2])];
@@ -225,30 +206,30 @@ function build(data: PositionData, cellSizeOrCount?: Vec3 | number) {
         size,
         data: inputData,
         expandedBox,
-        boundingBox,
-        boundingSphere,
-        elementCount: elementCount,
+        boundingBox: boundary.box,
+        boundingSphere: boundary.sphere,
+        elementCount,
         delta
-    }
+    };
 
     return _build(state);
 }
 
-interface QueryContext {
+interface QueryContext<T extends number = number> {
     grid: Grid3D,
     x: number,
     y: number,
     z: number,
     radius: number,
-    result: Result<number>,
+    result: Result<T>,
     isCheck: boolean
 }
 
-function createContext(grid: Grid3D): QueryContext {
-    return { grid, x: 0.1, y: 0.1, z: 0.1, radius: 0.1, result: Result.create(), isCheck: false }
+function createContext<T extends number = number>(grid: Grid3D): QueryContext<T> {
+    return { grid, x: 0.1, y: 0.1, z: 0.1, radius: 0.1, result: Result.create(), isCheck: false };
 }
 
-function query(ctx: QueryContext): boolean {
+function query<T extends number = number>(ctx: QueryContext<T>): boolean {
     const { min, size: [sX, sY, sZ], bucketOffset, bucketCounts, bucketArray, grid, data: { x: px, y: py, z: pz, indices, radius }, delta, maxRadius } = ctx.grid;
     const { radius: inputRadius, isCheck, x, y, z, result } = ctx;
 

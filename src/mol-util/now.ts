@@ -4,8 +4,8 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-declare var process: any;
-declare var window: any;
+declare const process: any;
+declare const window: any;
 
 const now: () => now.Timestamp = (function () {
     if (typeof window !== 'undefined' && window.performance) {
@@ -45,4 +45,4 @@ function formatTimespan(t: number, includeMsZeroes = true) {
     return `${t.toFixed(0)}ms`;
 }
 
-export { now, formatTimespan }
+export { now, formatTimespan };

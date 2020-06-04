@@ -1,12 +1,15 @@
 /**
- * Copyright (c) 2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2019-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { CustomElementProperty } from 'mol-model-props/common/custom-element-property';
-import { Model, ElementIndex, ResidueIndex } from 'mol-model/structure';
-import { Color } from 'mol-util/color';
+import { CustomElementProperty } from '../../mol-model-props/common/custom-element-property';
+import { Model, ElementIndex, ResidueIndex } from '../../mol-model/structure';
+import { Color } from '../../mol-util/color';
+import { CustomProperty } from '../../mol-model-props/common/custom-property';
+import { Asset } from '../../mol-util/assets';
 
 const EvolutionaryConservationPalette: Color[] = [
     [255, 255, 129], // insufficient
@@ -23,14 +26,14 @@ const EvolutionaryConservationPalette: Color[] = [
 const EvolutionaryConservationDefaultColor = Color(0x999999);
 
 export const EvolutionaryConservation = CustomElementProperty.create<number>({
-    isStatic: true,
     name: 'proteopedia-wrapper-evolutionary-conservation',
-    display: 'Evolutionary Conservation',
-    async getData(model: Model) {
-        const id = model.label.toLowerCase();
-        const req = await fetch(`https://proteopedia.org/cgi-bin/cnsrf?${id}`);
-        const json = await req.json();
-        const annotations = (json && json.residueAnnotations) || [];
+    label: 'Evolutionary Conservation',
+    type: 'static',
+    async getData(model: Model, ctx: CustomProperty.Context) {
+        const id = model.entryId.toLowerCase();
+        const url = Asset.getUrlAsset(ctx.assetManager, `https://proteopedia.org/cgi-bin/cnsrf?${id}`);
+        const json = await ctx.assetManager.resolve(url, 'json').runInContext(ctx.runtime);
+        const annotations = json.data?.residueAnnotations || [];
 
         const conservationMap = new Map<string, number>();
 
@@ -56,7 +59,7 @@ export const EvolutionaryConservation = CustomElementProperty.create<number>({
             }
         }
 
-        return map;
+        return { value: map, assets: [json] };
     },
     coloring: {
         getColor(e: number) {
@@ -65,8 +68,8 @@ export const EvolutionaryConservation = CustomElementProperty.create<number>({
         },
         defaultColor: EvolutionaryConservationDefaultColor
     },
-    format(e) {
-        if (e === 10) return `Evolutionary Conservation: InsufficientData`;
+    getLabel(e) {
+        if (e === 10) return `Evolutionary Conservation: Insufficient Data`;
         return e ? `Evolutionary Conservation: ${e}` : void 0;
     }
 });

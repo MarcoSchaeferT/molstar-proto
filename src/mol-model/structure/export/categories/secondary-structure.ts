@@ -4,15 +4,16 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Segmentation } from 'mol-data/int';
-import { CifWriter } from 'mol-io/writer/cif';
+import { Segmentation } from '../../../../mol-data/int';
+import { CifWriter } from '../../../../mol-io/writer/cif';
 import { SecondaryStructure } from '../../model/properties/seconday-structure';
 import { StructureElement, Unit } from '../../structure';
 import { CifExportContext } from '../mmcif';
 import CifField = CifWriter.Field
 import CifCategory = CifWriter.Category
-import { Column } from 'mol-data/db';
+import { Column } from '../../../../mol-data/db';
 import { residueIdFields } from './atom_site';
+import { ModelSecondaryStructure } from '../../../../mol-model-formats/structure/property/secondary-structure';
 
 export const _struct_conf: CifCategory<CifExportContext> = {
     name: 'struct_conf',
@@ -38,7 +39,7 @@ export const _struct_sheet_range: CifCategory<CifExportContext> = {
 
 function compare_ssr(x: SSElement<SecondaryStructure.Sheet>, y: SSElement<SecondaryStructure.Sheet>) {
     const a = x.element, b = y.element;
-    return a.sheet_id < b.sheet_id ? -1 : a.sheet_id === b.sheet_id ? x.start.element - y.start.element : 1
+    return a.sheet_id < b.sheet_id ? -1 : a.sheet_id === b.sheet_id ? x.start.element - y.start.element : 1;
 };
 
 const struct_conf_fields: CifField[] = [
@@ -50,7 +51,7 @@ const struct_conf_fields: CifField[] = [
     CifField.str<number, SSElement<SecondaryStructure.Helix>[]>('details', (i, data) => data[i].element.details || '', {
         valueKind: (i, d) => !!d[i].element.details ? Column.ValueKind.Present : Column.ValueKind.Unknown
     }),
-    CifField.int<number, SSElement<SecondaryStructure.Helix>[]>('pdbx_PDB_helix_class', (i, data) => data[i].length)
+    CifField.int<number, SSElement<SecondaryStructure.Helix>[]>('pdbx_PDB_helix_length', (i, data) => data[i].length)
 ];
 
 const struct_sheet_range_fields: CifField[] = [
@@ -62,19 +63,22 @@ const struct_sheet_range_fields: CifField[] = [
 ];
 
 interface SSElement<T extends SecondaryStructure.Element> {
-    start: StructureElement,
-    end: StructureElement,
+    start: StructureElement.Location,
+    end: StructureElement.Location,
     length: number,
     element: T
 }
 
 function findElements<T extends SecondaryStructure.Element>(ctx: CifExportContext, kind: SecondaryStructure.Element['kind']) {
     // TODO: encode secondary structure for different models?
-    const { key, elements } = ctx.structures[0].model.properties.secondaryStructure;
+    const secondaryStructure = ModelSecondaryStructure.Provider.get(ctx.firstModel);
+    if (!secondaryStructure) return [] as SSElement<T>[];
 
+    const { key, elements } = secondaryStructure;
     const ssElements: SSElement<any>[] = [];
 
-    for (const unit of ctx.structures[0].units) {
+    const structure = ctx.structures[0];
+    for (const unit of structure.units) {
         // currently can only support this for "identity" operators.
         if (!Unit.isAtomic(unit) || !unit.conformation.operator.isIdentity) continue;
 
@@ -100,11 +104,11 @@ function findElements<T extends SecondaryStructure.Element>(ctx: CifExportContex
                 if (startIdx !== key[current.index]) {
                     move = false;
                     ssElements[ssElements.length] = {
-                        start: StructureElement.create(unit, segs.offsets[start]),
-                        end: StructureElement.create(unit, segs.offsets[prev]),
+                        start: StructureElement.Location.create(structure, unit, segs.offsets[start]),
+                        end: StructureElement.Location.create(structure, unit, segs.offsets[prev]),
                         length: prev - start + 1,
                         element
-                    }
+                    };
                     break;
                 }
             }

@@ -1,13 +1,14 @@
 /**
- * Copyright (c) 2018 Mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2019 Mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import Type from '../type'
-import * as Core from './core'
-import { Arguments, Argument } from '../symbol'
-import { symbol } from '../helpers'
+import Type from '../type';
+import * as Core from './core';
+import { Arguments, Argument } from '../symbol';
+import { symbol } from '../helpers';
 
 export namespace Types {
     export const ElementSymbol = Type.Value('Structure', 'ElementSymbol');
@@ -20,7 +21,9 @@ export namespace Types {
     export const SecondaryStructureFlags = Core.Types.Flags(SecondaryStructureFlag, 'SecondaryStructureFlag');
 
     export const RingFingerprint = Type.Value('Structure', 'RingFingerprint');
-    export const EntityType = Type.OneOf('Structure', 'EntityType', Type.Str, ['polymer', 'non-polymer', 'water', 'unknown']);
+    export const EntityType = Type.OneOf('Structure', 'EntityType', Type.Str, ['polymer', 'non-polymer', 'water', 'branched']);
+    export const EntitySubtype = Type.OneOf('Structure', 'EntitySubtype', Type.Str, ['other', 'polypeptide(D)', 'polypeptide(L)', 'polydeoxyribonucleotide', 'polyribonucleotide', 'polydeoxyribonucleotide/polyribonucleotide hybrid', 'cyclic-pseudo-peptide', 'peptide nucleic acid', 'oligosaccharide']);
+    export const ObjectPrimitive = Type.OneOf('Structure', 'ObjectPrimitive', Type.Str, ['atomistic', 'sphere', 'gaussian', 'other']);
     export const ResidueId = Type.Value('Structure', 'ResidueId');
 
     export const ElementSet = Type.Value('Structure', 'ElementSet');
@@ -76,7 +79,7 @@ const slot = {
     '@header': 'Iteration Slots',
     element: symbol(Arguments.None, Types.ElementReference, 'A reference to the current element.'),
     elementSetReduce: symbol(Arguments.None, Type.Variable('a', Type.AnyValue, true), 'Current value of the element set reducer.')
-}
+};
 
 const generator = {
     '@header': 'Generators',
@@ -90,7 +93,16 @@ const generator = {
         'group-by': Argument(Type.Any, { isOptional: true, defaultValue: `atom-key`, description: 'Group atoms to sets based on this property. Default: each atom has its own set' }),
     }), Types.ElementSelectionQuery, 'Return all atoms for which the tests are satisfied, grouped into sets.'),
 
-    rings: symbol(Arguments.List(Types.RingFingerprint), Types.ElementSelectionQuery, 'Return rings with the specified fingerprint(s). If no fingerprints are given, return all rings.'),
+    bondedAtomicPairs: symbol(Arguments.Dictionary({
+        0: Argument(Type.Bool, { isOptional: true, defaultValue: 'true for covalent bonds' as any, description: 'Test each bond with this predicate. Each bond is visited twice with swapped atom order.' }),
+        // TODO: shoud we support this or just use queryEach to get similar behavior
+        // 'group-by': Argument(Type.Any, { isOptional: true, defaultValue: ``, description: 'Group the bonds using the privided value' }),
+    }), Types.ElementSelectionQuery, 'Return all pairs of atoms for which the test is satisfied.'),
+
+    rings: symbol(Arguments.Dictionary({
+        'fingerprint': Argument(Types.RingFingerprint, { isOptional: true }),
+        'only-aromatic': Argument(Type.Bool, { isOptional: true, defaultValue: false }),
+    }), Types.ElementSelectionQuery, 'Return all rings or those with the specified fingerprint and/or only aromatic rings.'),
 
     queryInSelection: symbol(Arguments.Dictionary({
         0: Argument(Types.ElementSelectionQuery),
@@ -99,7 +111,7 @@ const generator = {
     }), Types.ElementSelectionQuery, 'Executes query only on atoms that are in the source selection.'),
 
     empty: symbol(Arguments.None, Types.ElementSelectionQuery, 'Nada.'),
-}
+};
 
 const modifier = {
     '@header': 'Selection Modifications',
@@ -158,7 +170,7 @@ const modifier = {
         0: Argument(Types.ElementSelectionQuery),
         property: Argument(Type.AnyValue)
     }), Types.ElementSelectionQuery, 'To each atom set in the selection, add all atoms that have the same property value that was already present in the set.')
-}
+};
 
 const filter = {
     '@header': 'Selection Filters',
@@ -166,6 +178,10 @@ const filter = {
         0: Argument(Types.ElementSelectionQuery),
         test: Argument(Type.Bool)
     }), Types.ElementSelectionQuery, 'Pick all atom sets that satisfy the test.'),
+
+    first: symbol(Arguments.Dictionary({
+        0: Argument(Types.ElementSelectionQuery)
+    }), Types.ElementSelectionQuery, 'Take the 1st atom set in the sequence.'),
 
     withSameAtomProperties: symbol(Arguments.Dictionary({
         0: Argument(Types.ElementSelectionQuery),
@@ -194,7 +210,7 @@ const filter = {
         disjunct: Argument(Type.Bool, { isOptional: true, defaultValue: true, description: 'If true, there must exist a bond to an atom that lies outside the given atom set to pass test.' }),
         invert: Argument(Type.Bool, { isOptional: true, defaultValue: false, description: 'If true, return atom sets that are not connected.' })
     }), Types.ElementSelectionQuery, 'Pick all atom sets that are connected to the target.'),
-}
+};
 
 const combinator = {
     '@header': 'Selection Combinators',
@@ -204,7 +220,7 @@ const combinator = {
         matrix: Argument(Core.Types.List(Core.Types.List(Type.Num)), { description: 'Distance matrix, represented as list of rows (num[][])). Lower triangle is min distance, upper triangle is max distance.' }),
         selections: Argument(Core.Types.List(Types.ElementSelectionQuery), { description: 'A list of held selections.' })
     }), Types.ElementSelectionQuery, 'Pick combinations of atom sets from the source sequences that are mutually within distances specified by a matrix.')
-}
+};
 
 const atomSet = {
     '@header': 'Atom Sets',
@@ -223,7 +239,7 @@ const atomSet = {
     propertySet: symbol(Arguments.Dictionary({
         0: Argument(Core.Types.ConstrainedVar),
     }), Core.Types.Set(Core.Types.ConstrainedVar), 'Returns a set with all values of the given property in the current atom set.'),
-}
+};
 
 const atomProperty = {
     '@header': 'Atom Properties',
@@ -250,6 +266,8 @@ const atomProperty = {
 
         sourceIndex: atomProp(Type.Num, 'Index of the atom/element in the input file.'),
         operatorName: atomProp(Type.Str, 'Name of the symmetry operator applied to this element.'),
+        modelIndex: atomProp(Type.Num, 'Index of the model in the input file.'),
+        modelLabel: atomProp(Type.Str, 'Label/header of the model in the input file.')
     },
 
     topology: {
@@ -262,8 +280,8 @@ const atomProperty = {
         authResidueId: atomProp(Types.ResidueId, `type.auth-residue-id symbol executed on current atom's residue`),
         labelResidueId: atomProp(Types.ResidueId, `type.label-residue-id symbol executed on current atom's residue`),
 
-        residueKey: atomProp(Type.AnyValue, 'Unique value for each tuple ``(label_entity_id,auth_asym_id,auth_seq_id,pdbx_PDB_ins_code)``, main use case is grouping of atoms'),
-        chainKey: atomProp(Type.AnyValue, 'Unique value for each tuple ``(label_entity_id,auth_asym_id)``, main use case is grouping of atoms'),
+        residueKey: atomProp(Type.AnyValue, 'Unique value for each tuple ``(label_entity_id,auth_asym_id, auth_seq_id, pdbx_PDB_ins_code)``, main use case is grouping of atoms'),
+        chainKey: atomProp(Type.AnyValue, 'Unique value for each tuple ``(label_entity_id, auth_asym_id)``, main use case is grouping of atoms'),
         entityKey: atomProp(Type.AnyValue, 'Unique value for each tuple ``label_entity_id``, main use case is grouping of atoms'),
 
         isHet: atomProp(Type.Bool, 'Equivalent to atom_site.group_PDB !== ATOM'),
@@ -288,22 +306,30 @@ const atomProperty = {
         occupancy: atomProp(Type.Num),
         B_iso_or_equiv: atomProp(Type.Num),
 
-        entityType: atomProp(Types.EntityType, 'Type of the entity as defined in mmCIF (polymer, non-polymer, water, unknown)'),
+        entityType: atomProp(Types.EntityType, 'Type of the entity as defined in mmCIF (polymer, non-polymer, branched, water)'),
+        entitySubtype: atomProp(Types.EntitySubtype, 'Subtype of the entity as defined in mmCIF _entity_poly.type and _pdbx_entity_branch.type (other, polypeptide(D), polypeptide(L), polydeoxyribonucleotide, polyribonucleotide, polydeoxyribonucleotide/polyribonucleotide hybrid, cyclic-pseudo-peptide, peptide nucleic acid, oligosaccharide)'),
+        entityPrdId: atomProp(Type.Str, `The PRD ID of the entity.`),
+        entityDescription: atomProp(Core.Types.List(Type.Str)),
+        objectPrimitive: atomProp(Types.ObjectPrimitive, 'Type of the primitive object used to model this segment as defined in mmCIF/IHM (atomistic, sphere, gaussian, other)'),
 
         secondaryStructureKey: atomProp(Type.AnyValue, 'Unique value for each secondary structure element.'),
         secondaryStructureFlags: atomProp(Types.SecondaryStructureFlags),
-
-        isModified: atomProp(Type.Bool, 'True if the atom bolongs to modification of a standard residue.'),
+        isModified: atomProp(Type.Bool, 'True if the atom belongs to modification of a standard residue.'),
         modifiedParentName: atomProp(Type.Str, `'3-letter' code of the modifed parent residue.`),
+        isNonStandard: atomProp(Type.Bool, 'True if this is a non-standard residue.'),
+        chemCompType: atomProp(Type.Str, `Type of the chemical component as defined in mmCIF.`),
     }
-}
+};
 
 const bondProperty = {
     '@header': 'Bond Properties',
 
     flags: bondProp(Types.BondFlags),
-    order: bondProp(Type.Num)
-}
+    order: bondProp(Type.Num),
+    length: bondProp(Type.Num),
+    atomA: bondProp(Types.ElementReference),
+    atomB: bondProp(Types.ElementReference)
+};
 
 function atomProp(type: Type, description?: string) {
     return symbol(Arguments.Dictionary({ 0: Argument(Types.ElementReference, { isOptional: true, defaultValue: 'slot.current-atom' }) }), type, description);
@@ -323,5 +349,5 @@ export default {
     combinator,
     atomSet,
     atomProperty,
-    bondProperty
-}
+    bondProperty: bondProperty
+};

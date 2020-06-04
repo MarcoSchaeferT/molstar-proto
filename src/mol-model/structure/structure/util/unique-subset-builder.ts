@@ -4,12 +4,12 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { IntMap, SortedArray } from 'mol-data/int';
-import { sortArray } from 'mol-data/util';
+import { IntMap, SortedArray } from '../../../../mol-data/int';
+import { sortArray } from '../../../../mol-data/util';
 import StructureSymmetry from '../symmetry';
 import Unit from '../unit';
 import Structure from '../structure';
-import { UniqueArray } from 'mol-data/generic';
+import { UniqueArray } from '../../../../mol-data/generic';
 
 type UArray = UniqueArray<number, number>
 
@@ -24,14 +24,19 @@ export class StructureUniqueSubsetBuilder {
         const unit = this.unitMap.get(parentId);
         if (!!unit) {
             if (UniqueArray.add(unit, e, e)) this.elementCount++;
-        }
-        else {
+        } else {
             const arr: UArray = UniqueArray.create();
             UniqueArray.add(arr, e, e);
             this.unitMap.set(parentId, arr);
             this.ids[this.ids.length] = parentId;
             this.elementCount++;
         }
+    }
+
+    has(parentId: number, e: number) {
+        const unit = this.unitMap.get(parentId);
+        if (!unit) return false;
+        return UniqueArray.has(unit, e);
     }
 
     beginUnit(parentId: number) {
@@ -85,7 +90,7 @@ export class StructureUniqueSubsetBuilder {
             newUnits[newUnits.length] = child;
         }
 
-        return Structure.create(newUnits);
+        return Structure.create(newUnits, { parent: this.parent });
     }
 
     get isEmpty() {

@@ -1,14 +1,14 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * Code-generated 'BIRD' schema file. Dictionary versions: mmCIF 5.305, IHM 0.139, CARB draft.
+ * Code-generated 'BIRD' schema file. Dictionary versions: mmCIF 5.326, IHM 1.09, CARB draft.
  *
- * @author mol-star package (src/apps/schema-generator/generate)
+ * @author molstar/ciftools package
  */
 
-import { Database, Column } from 'mol-data/db'
+import { Database, Column } from '../../../../mol-data/db';
 
-import Schema = Column.Schema
+import Schema = Column.Schema;
 
 const str = Schema.str;
 const float = Schema.float;
@@ -66,7 +66,7 @@ export const BIRD_Schema = {
         /**
          * Broadly defines the function of the entity.
          */
-        class: Aliased<'Antagonist' | 'Antibiotic' | 'Anticancer' | 'Anticoagulant' | 'Antifungal' | 'Antiinflammatory' | 'Antimicrobial' | 'Antineoplastic' | 'Antiparasitic' | 'Antiretroviral' | 'Anthelmintic' | 'Antithrombotic' | 'Antitumor' | 'Antiviral' | 'CASPASE inhibitor' | 'Chaperone binding' | 'Enzyme inhibitor' | 'Growth factor' | 'Immunosuppressant' | 'Inhibitor' | 'Lantibiotic' | 'Metabolism' | 'Metal transport' | 'Oxidation-reduction' | 'Receptor' | 'Thrombin inhibitor' | 'Trypsin inhibitor' | 'Toxin' | 'Unknown' | 'Anticoagulant, Antithrombotic' | 'Antibiotic, Antimicrobial' | 'Antibiotic, Anthelmintic' | 'Antibiotic, Antineoplastic' | 'Antimicrobial, Antiretroviral' | 'Antimicrobial, Antitumor' | 'Antimicrobial, Antiparasitic, Antibiotic' | 'Thrombin inhibitor, Trypsin inhibitor'>(str),
+        class: Aliased<'Antagonist' | 'Antibiotic' | 'Anticancer' | 'Anticoagulant' | 'Antifungal' | 'Antigen' | 'Antiinflammatory' | 'Antimicrobial' | 'Antineoplastic' | 'Antiparasitic' | 'Antiretroviral' | 'Anthelmintic' | 'Antithrombotic' | 'Antitumor' | 'Antiviral' | 'CASPASE inhibitor' | 'Chaperone binding' | 'Enzyme inhibitor' | 'Drug delivery' | 'Glycan component' | 'Growth factor' | 'Immunosuppressant' | 'Inducer' | 'Inhibitor' | 'Lantibiotic' | 'Metabolism' | 'Metal transport' | 'Nutrient' | 'Oxidation-reduction' | 'Protein binding' | 'Receptor' | 'Substrate analog' | 'Thrombin inhibitor' | 'Trypsin inhibitor' | 'Toxin' | 'Unknown' | 'Water retention' | 'Anticoagulant, Antithrombotic' | 'Antibiotic, Antimicrobial' | 'Antibiotic, Anthelmintic' | 'Antibiotic, Antineoplastic' | 'Antimicrobial, Antiretroviral' | 'Antimicrobial, Antitumor' | 'Antimicrobial, Antiparasitic, Antibiotic' | 'Thrombin inhibitor, Trypsin inhibitor'>(str),
         /**
          * Evidence for the assignment of _pdbx_reference_molecule.class
          */
@@ -78,12 +78,16 @@ export const BIRD_Schema = {
         /**
          * Defines how this entity is represented in PDB data files.
          */
-        represent_as: Aliased<'polymer' | 'single molecule'>(str),
+        represent_as: Aliased<'polymer' | 'single molecule' | 'branched'>(str),
         /**
          * For entities represented as single molecules, the identifier
          * corresponding to the chemical definition for the molecule.
          */
         chem_comp_id: str,
+        /**
+         * Special details about this molecule.
+         */
+        compound_details: str,
         /**
          * Description of this molecule.
          */
@@ -125,7 +129,7 @@ export const BIRD_Schema = {
         /**
          * Defines the polymer characteristic of the entity.
          */
-        type: str,
+        type: Aliased<'polymer' | 'polymer-like' | 'non-polymer' | 'branched'>(str),
         /**
          * Additional details about this entity.
          */
@@ -352,7 +356,7 @@ export const BIRD_Schema = {
         /**
          * The type of the polymer.
          */
-        type: Aliased<'peptide-like' | 'nucleic-acid-like' | 'polysaccharide-like'>(str),
+        type: Aliased<'peptide-like' | 'nucleic-acid-like' | 'polysaccharide-like' | 'oligosaccharide'>(str),
         /**
          * The database code for this source information
          */
@@ -419,7 +423,7 @@ export const BIRD_Schema = {
         /**
          * The monomer type for the sequence.
          */
-        type: str,
+        type: Aliased<'peptide-like' | 'saccharide'>(str),
         /**
          * A flag to indicate a non-ribosomal entity.
          */
@@ -483,13 +487,13 @@ export const BIRD_Schema = {
         /**
          * An identifier for the wwPDB site creating or modifying the molecule.
          */
-        processing_site: Aliased<'RCSB' | 'PDBe' | 'PDBJ' | 'BMRB'>(str),
+        processing_site: Aliased<'RCSB' | 'PDBe' | 'PDBJ' | 'BMRB' | 'PDBC'>(str),
         /**
          * The action associated with this audit record.
          */
         action_type: Aliased<'Initial release' | 'Create molecule' | 'Modify type' | 'Modify class' | 'Modify molecule name' | 'Modify representation' | 'Modify sequence' | 'Modify linkage' | 'Modify taxonomy organism' | 'Modify audit' | 'Other modification' | 'Obsolete molecule'>(str),
     },
-}
+};
 
 export type BIRD_Schema = typeof BIRD_Schema;
-export interface BIRD_Database extends Database<BIRD_Schema> {}
+export interface BIRD_Database extends Database<BIRD_Schema> {};

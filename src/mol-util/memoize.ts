@@ -4,7 +4,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
- /** Cache the latest result from calls to a function with any number of arguments */
+/** Cache the latest result from calls to a function with any number of arguments */
 export function memoizeLatest<Args extends any[], T>(f: (...args: Args) => T): (...args: Args) => T {
     let lastArgs: any[] | undefined = void 0, value: any = void 0;
     return (...args) => {
@@ -21,7 +21,7 @@ export function memoizeLatest<Args extends any[], T>(f: (...args: Args) => T): (
             }
         }
         return value;
-    }
+    };
 }
 
 /** Cache all results from calls to a function with a single argument */
@@ -32,5 +32,5 @@ export function memoize1<A, T>(f: (a: A) => T): (a: A) => T {
         const v = f(a);
         cache.set(a, v);
         return v;
-    }
+    };
 }

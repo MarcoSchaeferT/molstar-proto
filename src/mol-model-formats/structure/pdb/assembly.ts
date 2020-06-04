@@ -4,10 +4,10 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { CifCategory, CifField } from 'mol-io/reader/cif';
-import { mmCIF_Schema } from 'mol-io/reader/cif/schema/mmcif';
-import { Mat4 } from 'mol-math/linear-algebra';
-import { Tokens } from 'mol-io/reader/common/text/tokenizer';
+import { CifCategory, CifField } from '../../../mol-io/reader/cif';
+import { mmCIF_Schema } from '../../../mol-io/reader/cif/schema/mmcif';
+import { Mat4 } from '../../../mol-math/linear-algebra';
+import { Tokens } from '../../../mol-io/reader/common/text/tokenizer';
 
 export function parseCryst1(id: string, record: string): CifCategory[] {
     // COLUMNS       DATA TYPE      CONTENTS
@@ -22,7 +22,7 @@ export function parseCryst1(id: string, record: string): CifCategory[] {
     // 56 - 66       LString        Space group
     // 67 - 70       Integer        Z value
 
-    const get = (s: number, l: number) => (record.substr(s, l) || '').trim()
+    const get = (s: number, l: number) => (record.substr(s, l) || '').trim();
 
     const cell: CifCategory.Fields<mmCIF_Schema['cell']> = {
         entry_id: CifField.ofString(id),
@@ -41,7 +41,7 @@ export function parseCryst1(id: string, record: string): CifCategory[] {
         Int_Tables_number: CifField.ofString('?'),
         cell_setting: CifField.ofString('?'),
         space_group_name_Hall: CifField.ofString('?')
-    }
+    };
     return [CifCategory.ofFields('cell', cell), CifCategory.ofFields('symmetry', symmetry)];
 }
 
@@ -59,13 +59,13 @@ export function parseRemark350(lines: Tokens, lineStart: number, lineEnd: number
     const assemblies: PdbAssembly[] = [];
 
     // Read the assemblies
-    let current: PdbAssembly, group: PdbAssembly['groups'][0], matrix: Mat4, operId = 1;
+    let current: PdbAssembly, group: PdbAssembly['groups'][0], matrix: Mat4, operId = 1, asmId = 1;
     const getLine = (n: number) => lines.data.substring(lines.indices[2 * n], lines.indices[2 * n + 1]);
     for (let i = lineStart; i < lineEnd; i++) {
         let line = getLine(i);
         if (line.substr(11, 12) === 'BIOMOLECULE:') {
             const id = line.substr(23).trim();
-            let details: string = `Biomolecule ` + id;
+            let details = `Biomolecule ${id}`;
             line = getLine(i + 1);
             if (line.substr(11, 30) !== 'APPLY THE FOLLOWING TO CHAINS:') {
                 i++;
@@ -74,8 +74,8 @@ export function parseRemark350(lines: Tokens, lineStart: number, lineEnd: number
             current = PdbAssembly(id, details);
             assemblies.push(current);
         } else if (line.substr(13, 5) === 'BIOMT') {
-            const biomt = line.split(/\s+/)
-            const row = parseInt(line[18]) - 1
+            const biomt = line.split(/\s+/);
+            const row = parseInt(line[18]) - 1;
 
             if (row === 0) {
                 matrix = Mat4.identity();
@@ -96,6 +96,23 @@ export function parseRemark350(lines: Tokens, lineStart: number, lineEnd: number
             }
 
             const chainList = line.substr(41, 30).split(',');
+            for (let j = 0, jl = chainList.length; j < jl; ++j) {
+                const c = chainList[j].trim();
+                if (c) group!.chains.push(c);
+            }
+        } else if (line.substr(11, 33) === 'APPLYING THE FOLLOWING TO CHAINS:') {
+            // variant in older PDB format version
+            current = PdbAssembly(`${asmId}`, `Biomolecule ${asmId}`);
+            assemblies.push(current);
+            asmId += 1;
+
+            group = { chains: [], operators: [] };
+            current!.groups.push(group);
+
+            i++;
+            line = getLine(i);
+
+            const chainList = line.substr(11, 69).split(',');
             for (let j = 0, jl = chainList.length; j < jl; ++j) {
                 const c = chainList[j].trim();
                 if (c) group!.chains.push(c);
@@ -202,18 +219,18 @@ export function parseMtrix(lines: Tokens, lineStart: number, lineEnd: number): C
     const struct_ncs_oper_rows: { [P in keyof CifCategory.Fields<mmCIF_Schema['struct_ncs_oper']>]?: string }[] = [];
     let id = 1;
     for (const oper of matrices) {
-            const row = {
-                id: 'ncsop' + (id++),
-                code: '.',
-                details: '.'
-            } as (typeof struct_ncs_oper_rows)[0] as any;
-            for (let i = 0; i < 3; i++) {
-                for (let j = 0; j < 3; j++) {
-                    row[`matrix[${i + 1}][${j + 1}]`] = '' + Mat4.getValue(oper, i, j);
-                }
-                row[`vector[${i + 1}]`] = '' + Mat4.getValue(oper, i, 3);
+        const row = {
+            id: 'ncsop' + (id++),
+            code: '.',
+            details: '.'
+        } as (typeof struct_ncs_oper_rows)[0] as any;
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                row[`matrix[${i + 1}][${j + 1}]`] = '' + Mat4.getValue(oper, i, j);
             }
-            struct_ncs_oper_rows.push(row);
+            row[`vector[${i + 1}]`] = '' + Mat4.getValue(oper, i, 3);
+        }
+        struct_ncs_oper_rows.push(row);
     }
 
     const struct_ncs_oper: CifCategory.SomeFields<mmCIF_Schema['struct_ncs_oper']> = {

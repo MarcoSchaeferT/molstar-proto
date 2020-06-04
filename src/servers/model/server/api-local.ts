@@ -4,23 +4,29 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { JobManager, Job } from './jobs';
-import { ConsoleLogger } from 'mol-util/console-logger';
+import { ConsoleLogger } from '../../../mol-util/console-logger';
+import { now } from '../../../mol-util/now';
+import { PerformanceMonitor } from '../../../mol-util/performance-monitor';
+import { FileResultWriter, TarballFileResultWriter } from '../utils/writer';
+import { QueryName, QueryParams } from './api';
+import { Job, JobEntry, JobManager } from './jobs';
 import { resolveJob } from './query';
 import { StructureCache } from './structure-wrapper';
-import { now } from 'mol-util/now';
-import { PerformanceMonitor } from 'mol-util/performance-monitor';
-import { QueryName } from './api';
+
+export type Entry<Q extends QueryName = QueryName> = {
+    input: string,
+    query: Q,
+    modelNums?: number[],
+    copyAllCategories?: boolean,
+    params?: QueryParams<Q>,
+}
 
 export type LocalInput = {
-    input: string,
+    queries: Entry[],
     output: string,
-    query: QueryName,
-    modelNums?: number[],
-    params?: any,
-    binary?: boolean
+    binary?: boolean,
+    asTarGz?: boolean,
+    gzipLevel?: number
 }[];
 
 export async function runLocal(input: LocalInput) {
@@ -32,13 +38,20 @@ export async function runLocal(input: LocalInput) {
     for (const job of input) {
         const binary = /\.bcif/.test(job.output);
         JobManager.add({
-            entryId: job.input,
-            queryName: job.query,
-            queryParams: job.params || { },
+            entries: job.queries.map(q => JobEntry({
+                entryId: q.input,
+                queryName: q.query,
+                queryParams: q.params || { },
+                modelNums: q.modelNums,
+                copyAllCategories: !!q.copyAllCategories
+            })),
+            writer: job.asTarGz
+                ? new TarballFileResultWriter(job.output, job.gzipLevel)
+                : new FileResultWriter(job.output),
             options: {
-                modelNums: job.modelNums,
                 outputFilename: job.output,
-                binary
+                binary,
+                tarball: job.asTarGz
             }
         });
     }
@@ -47,74 +60,37 @@ export async function runLocal(input: LocalInput) {
     const started = now();
 
     let job: Job | undefined = JobManager.getNext();
-    let key = job.key;
+    let key = job.entries[0].key;
     let progress = 0;
     while (job) {
         try {
-            const encoder = await resolveJob(job);
-            const writer = wrapFileToWriter(job.outputFilename!);
-            encoder.writeTo(writer);
-            writer.end();
+            await resolveJob(job);
+            job.writer.end();
             ConsoleLogger.logId(job.id, 'Query', 'Written.');
+
+            if (job.entries.length > 0) StructureCache.expireAll();
 
             if (JobManager.hasNext()) {
                 job = JobManager.getNext();
-                if (key !== job.key) StructureCache.expire(key);
-                key = job.key;
+                if (key !== job.entries[0].key) StructureCache.expire(key);
+                key = job.entries[0].key;
             } else {
                 break;
             }
         } catch (e) {
             ConsoleLogger.errorId(job.id, e);
+
+            if (JobManager.hasNext()) {
+                job = JobManager.getNext();
+                if (key !== job.entries[0].key) StructureCache.expire(key);
+                key = job.entries[0].key;
+            } else {
+                break;
+            }
         }
         ConsoleLogger.log('Progress', `[${++progress}/${input.length}] after ${PerformanceMonitor.format(now() - started)}.`);
     }
 
     ConsoleLogger.log('Progress', `Done in ${PerformanceMonitor.format(now() - started)}.`);
     StructureCache.expireAll();
-}
-
-export function wrapFileToWriter(fn: string) {
-    const w = {
-        open(this: any) {
-            if (this.opened) return;
-            makeDir(path.dirname(fn));
-            this.file = fs.openSync(fn, 'w');
-            this.opened = true;
-        },
-        writeBinary(this: any, data: Uint8Array) {
-            this.open();
-            fs.writeSync(this.file, Buffer.from(data.buffer));
-            return true;
-        },
-        writeString(this: any, data: string) {
-            this.open();
-            fs.writeSync(this.file, data);
-            return true;
-        },
-        end(this: any) {
-            if (!this.opened || this.ended) return;
-            fs.close(this.file, function () { });
-            this.ended = true;
-        },
-        file: 0,
-        ended: false,
-        opened: false
-    };
-
-    return w;
-}
-
-function makeDir(path: string, root?: string): boolean {
-    let dirs = path.split(/\/|\\/g),
-        dir = dirs.shift();
-
-    root = (root || '') + dir + '/';
-
-    try { fs.mkdirSync(root); }
-    catch (e) {
-        if (!fs.statSync(root).isDirectory()) throw new Error(e);
-    }
-
-    return !dirs.length || makeDir(dirs.join('/'), root);
 }

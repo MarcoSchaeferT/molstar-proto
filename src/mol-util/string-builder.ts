@@ -38,6 +38,13 @@ namespace StringBuilder {
         return builder.chunks.join('');
     }
 
+    export function getSize(builder: StringBuilder): number {
+        let size = 0;
+        for (const c of builder.chunks) size += c.length;
+        for (let i = 0; i < builder.offset; i++) size += builder.current[i].length;
+        return size;
+    }
+
     export function getChunks(builder: StringBuilder): string[] {
         if (builder.offset > 0) {
             if (builder.current.length === builder.offset) builder.chunks[builder.chunks.length] = builder.current.join('');
@@ -133,7 +140,7 @@ namespace StringBuilder {
      * @example writeFloat(123.2123, 100) -- 2 decim
      */
     export function writeFloat(builder: StringBuilder, val: number, precisionMultiplier: number) {
-        writeSafe(builder, '' + Math.round(precisionMultiplier * val) / precisionMultiplier)
+        writeSafe(builder, '' + Math.round(precisionMultiplier * val) / precisionMultiplier);
     }
 
     export function writeFloatPadLeft(builder: StringBuilder, val: number, precisionMultiplier: number, totalWidth: number) {
@@ -151,4 +158,4 @@ namespace StringBuilder {
     }
 }
 
-export default StringBuilder
+export default StringBuilder;

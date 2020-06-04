@@ -4,8 +4,8 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Structure, Unit, StructureElement } from '../../structure'
-import { SortedArray } from 'mol-data/int';
+import { Structure, Unit, StructureElement } from '../../structure';
+import { SortedArray } from '../../../../mol-data/int';
 import { StructureSubsetBuilder } from '../../structure/util/subset-builder';
 
 export function structureUnion(source: Structure, structures: Structure[]) {
@@ -40,12 +40,31 @@ function buildUnion(this: StructureSubsetBuilder, elements: StructureElement.Set
     this.setUnit(id, elements);
 }
 
+export function structureAreEqual(sA: Structure, sB: Structure): boolean {
+    if (sA === sB) return true;
+
+    if (sA.units.length !== sB.units.length) return false;
+
+    const aU = sA.units, bU = sB.unitMap;
+    for (let i = 0, _i = aU.length; i < _i; i++) {
+        const u = aU[i];
+        if (!bU.has(u.id)) return false;
+        const v = bU.get(u.id);
+        if (!SortedArray.areEqual(u.elements, v.elements)) return false;
+    }
+
+    return true;
+}
+
 export function structureAreIntersecting(sA: Structure, sB: Structure): boolean {
     if (sA === sB) return true;
 
     let a, b;
-    if (sA.units.length < sB.units.length) { a = sA; b = sB; }
-    else { a = sB; b = sA; }
+    if (sA.units.length < sB.units.length) {
+        a = sA; b = sB;
+    } else {
+        a = sB; b = sA;
+    }
 
     const aU = a.units, bU = b.unitMap;
 
@@ -64,8 +83,11 @@ export function structureIntersect(sA: Structure, sB: Structure): Structure {
     if (!structureAreIntersecting(sA, sB)) return Structure.Empty;
 
     let a, b;
-    if (sA.units.length < sB.units.length) { a = sA; b = sB; }
-    else { a = sB; b = sA; }
+    if (sA.units.length < sB.units.length) {
+        a = sA; b = sB;
+    } else {
+        a = sB; b = sA;
+    }
 
     const aU = a.units, bU = b.unitMap;
     const units: Unit[] = [];
@@ -80,7 +102,7 @@ export function structureIntersect(sA: Structure, sB: Structure): Structure {
         }
     }
 
-    return Structure.create(units);
+    return Structure.create(units, { parent: sA.parent || sB.parent });
 }
 
 export function structureSubtract(a: Structure, b: Structure): Structure {
@@ -92,7 +114,10 @@ export function structureSubtract(a: Structure, b: Structure): Structure {
 
     for (let i = 0, _i = aU.length; i < _i; i++) {
         const u = aU[i];
-        if (!bU.has(u.id)) continue;
+        if (!bU.has(u.id)) {
+            units[units.length] = u;
+            continue;
+        }
         const v = bU.get(u.id);
         const sub = SortedArray.subtract(u.elements, v.elements);
         if (sub.length > 0) {
@@ -100,5 +125,5 @@ export function structureSubtract(a: Structure, b: Structure): Structure {
         }
     }
 
-    return Structure.create(units);
+    return Structure.create(units, { parent: a.parent || b.parent });
 }

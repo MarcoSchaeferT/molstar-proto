@@ -4,8 +4,8 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Structure, Unit } from '../../structure'
-import { Vec3 } from 'mol-math/linear-algebra';
+import { Structure, Unit } from '../../structure';
+import { Vec3 } from '../../../../mol-math/linear-algebra';
 import { QueryFn, QueryContext } from '../context';
 
 export function checkStructureMinMaxDistance(ctx: QueryContext, a: Structure, b: Structure, minDist: number, maxDist: number, elementRadius: QueryFn<number>) {
@@ -61,12 +61,14 @@ namespace MinMaxDist {
 
         const { units } = a;
         let withinRange = false;
+        ctx.element.structure = a;
         for (let i = 0, _i = units.length; i < _i; i++) {
             const unit = units[i];
             const { elements, conformation: { position } } = unit;
+            ctx.element.unit = unit;
             for (let i = 0, _i = elements.length; i < _i; i++) {
                 const e = elements[i];
-                ctx.setElement(unit, e);
+                ctx.element.element = e;
                 const tp = toPoint(ctx, b, position(e, distPivot), elementRadius(ctx), minDist, maxDist, elementRadius);
                 if (tp === Result.BelowMin) return Result.BelowMin;
                 if (tp === Result.WithinMax) withinRange = true;
@@ -102,12 +104,14 @@ namespace MaxRadiusDist {
         if (a.elementCount === 0 || b.elementCount === 0) return 0;
 
         const { units } = a;
+        ctx.element.structure = a;
         for (let i = 0, _i = units.length; i < _i; i++) {
             const unit = units[i];
+            ctx.element.unit = unit;
             const { elements, conformation: { position } } = unit;
             for (let i = 0, _i = elements.length; i < _i; i++) {
                 const e = elements[i];
-                ctx.setElement(unit, e);
+                ctx.element.element = e;
                 if (toPoint(ctx, b, position(e, distPivot), elementRadius(ctx), maxDist, elementRadius)) return true;
             }
         }

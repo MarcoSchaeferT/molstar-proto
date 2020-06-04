@@ -4,10 +4,10 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { HashSet } from 'mol-data/generic'
-import { Structure, StructureElement, Unit } from '../structure'
+import { HashSet } from '../../../mol-data/generic';
+import { Structure, StructureElement, Unit } from '../structure';
 import { structureUnion } from './utils/structure-set';
-import { OrderedSet, SortedArray } from 'mol-data/int';
+import { OrderedSet, SortedArray } from '../../../mol-data/int';
 
 // A selection is a pair of a Structure and a sequence of unique AtomSets
 type StructureSelection = StructureSelection.Singletons | StructureSelection.Sequence
@@ -17,8 +17,8 @@ namespace StructureSelection {
     export interface Singletons { readonly kind: 'singletons', readonly source: Structure, readonly structure: Structure }
     export interface Sequence { readonly kind: 'sequence', readonly source: Structure, readonly structures: Structure[] }
 
-    export function Singletons(source: Structure, structure: Structure): Singletons { return { kind: 'singletons', source, structure } }
-    export function Sequence(source: Structure, structures: Structure[]): Sequence { return { kind: 'sequence', source, structures } }
+    export function Singletons(source: Structure, structure: Structure): Singletons { return { kind: 'singletons', source, structure }; }
+    export function Sequence(source: Structure, structures: Structure[]): Sequence { return { kind: 'sequence', source, structures }; }
     export function Empty(source: Structure): StructureSelection { return Singletons(source, Structure.Empty); };
 
     export function isSingleton(s: StructureSelection): s is Singletons { return s.kind === 'singletons'; }
@@ -35,7 +35,8 @@ namespace StructureSelection {
         return structureUnion(sel.source, sel.structures);
     }
 
-    export function toLoci(sel: StructureSelection): StructureElement.Loci {
+    /** Convert selection to loci and use "current structure units" in Loci elements */
+    export function toLociWithCurrentUnits(sel: StructureSelection): StructureElement.Loci {
         const elements: { unit: Unit, indices: OrderedSet<StructureElement.UnitIndex> }[] = [];
         const { unitMap } = sel.source;
 
@@ -57,12 +58,12 @@ namespace StructureSelection {
     }
 
     /** use source unit in loci.elements */
-    export function toLoci2(sel: StructureSelection): StructureElement.Loci {
+    export function toLociWithSourceUnits(sel: StructureSelection): StructureElement.Loci {
         const elements: { unit: Unit, indices: OrderedSet<StructureElement.UnitIndex> }[] = [];
         const { unitMap } = sel.source;
 
         for (const _unit of unionStructure(sel).units) {
-            const unit = unitMap.get(_unit.id)
+            const unit = unitMap.get(_unit.id);
             if (unit === _unit) {
                 elements[elements.length] = {
                     unit,
@@ -135,7 +136,7 @@ namespace StructureSelection {
                 const { elements } = unit;
                 for (let i = 0, _i = elements.length; i < _i; i++) {
                     // TODO: optimize this somehow???
-                    const s = Structure.create([unit.getChild(SortedArray.ofSingleton(elements[i]))]);
+                    const s = Structure.create([unit.getChild(SortedArray.ofSingleton(elements[i]))], { parent: sel.source });
                     fn(s, idx++);
                 }
             }
@@ -154,4 +155,4 @@ namespace StructureSelection {
     // TODO: spatial lookup?
 }
 
-export { StructureSelection }
+export { StructureSelection };

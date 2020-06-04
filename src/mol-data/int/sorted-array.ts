@@ -1,20 +1,20 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import * as Impl from './impl/sorted-array'
-import Interval from './interval'
+import * as Impl from './impl/sorted-array';
+import Interval from './interval';
 
 namespace SortedArray {
     export const Empty: SortedArray = Impl.Empty as any;
     export const ofUnsortedArray: <T extends number = number>(xs: ArrayLike<number>) => SortedArray<T> = Impl.ofUnsortedArray as any;
     export const ofSingleton: <T extends number = number>(v: number) => SortedArray<T> = Impl.ofSingleton as any;
     export const ofSortedArray: <T extends number = number>(xs: ArrayLike<number>) => SortedArray<T> = Impl.ofSortedArray as any;
-    // create sorted array [min, max] (it DOES contain the max value)
+    /** create sorted array [min, max] (it DOES contain the max value) */
     export const ofRange: <T extends number = number>(min: T, max: T) => SortedArray<T> = Impl.ofRange as any;
-    // create sorted array [min, max) (it does NOT contain the max value)
+    /** create sorted array [min, max) (it does NOT contain the max value) */
     export const ofBounds: <T extends number = number>(min: T, max: T) => SortedArray<T> = (min, max) => Impl.ofRange(min, max - 1) as any;
     export const is: <T extends number = number>(v: any) => v is SortedArray<T> = Impl.is as any;
 
@@ -22,15 +22,17 @@ namespace SortedArray {
     /** Returns the index of `x` in `set` or -1 if not found. */
     export const indexOf: <T extends number = number>(array: SortedArray<T>, x: T) => number = Impl.indexOf as any;
     export const indexOfInInterval: <T extends number = number>(array: SortedArray<T>, x: number, bounds: Interval) => number = Impl.indexOfInInterval as any;
+    export const indexOfInRange: <T extends number = number>(array: SortedArray<T>, x: number, start: number, end: number) => number = Impl.indexOfInRange as any;
 
-    // array[0]
+    /** Returns `array[0]` */
     export const start: <T extends number = number>(array: SortedArray<T>) => T = Impl.start as any;
-    // array[array.length - 1] + 1
+    /** Returns `array[array.length - 1] + 1` */
     export const end: <T extends number = number>(array: SortedArray<T>) => T = Impl.end as any;
     export const min: <T extends number = number>(array: SortedArray<T>) => T = Impl.min as any;
     export const max: <T extends number = number>(array: SortedArray<T>) => T = Impl.max as any;
     export const size: <T extends number = number>(array: SortedArray<T>) => number = Impl.size as any;
     export const hashCode: <T extends number = number>(array: SortedArray<T>) => number = Impl.hashCode as any;
+    export const toString: <T extends number = number>(array: SortedArray<T>) => string = Impl.toString as any;
 
     export const areEqual: <T extends number = number>(a: SortedArray<T>, b: SortedArray<T>) => boolean = Impl.areEqual as any;
     export const areIntersecting: <T extends number = number>(a: SortedArray<T>, b: SortedArray<T>) => boolean = Impl.areIntersecting as any;
@@ -52,4 +54,4 @@ namespace SortedArray {
 
 interface SortedArray<T extends number = number> extends ArrayLike<T> { '@type': 'int-sorted-array' }
 
-export default SortedArray
+export default SortedArray;

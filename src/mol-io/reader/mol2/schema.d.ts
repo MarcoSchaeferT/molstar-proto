@@ -4,7 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Column } from 'mol-data/db'
+import { Column } from '../../../mol-data/db';
 
 // Full format http://chemyang.ccnu.edu.cn/ccb/server/AIMMS/mol2.pdf
 // there are many records but for now ignore (pass over) all but the following
@@ -63,5 +63,6 @@ export interface Mol2Structure {
 }
 
 export interface Mol2File {
+    name: string
     structures: Mol2Structure[]
 }

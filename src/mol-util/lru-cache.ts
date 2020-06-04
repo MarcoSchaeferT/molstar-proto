@@ -6,9 +6,9 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { LinkedList } from 'mol-data/generic';
+import { LinkedList } from '../mol-data/generic';
 
-export { LRUCache }
+export { LRUCache };
 
 interface LRUCache<T> {
     entries: LinkedList<LRUCache.Entry<T>>,
@@ -43,11 +43,14 @@ namespace LRUCache {
         return void 0;
     }
 
-    export function set<T>(cache: LRUCache<T>, key: string, data: T): T {
+    export function set<T>(cache: LRUCache<T>, key: string, data: T): T | undefined {
+        let removed: T | undefined = undefined;
         if (cache.entries.count >= cache.capacity) {
-            cache.entries.remove(cache.entries.first!);
+            const first = cache.entries.first!;
+            removed = first.value.data;
+            cache.entries.remove(first);
         }
         cache.entries.addLast(entry(key, data));
-        return data;
+        return removed;
     }
 }

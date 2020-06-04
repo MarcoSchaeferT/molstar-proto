@@ -4,22 +4,24 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Task } from 'mol-task';
+import { Task } from '../mol-task';
 import { StateObject, StateObjectCell } from './object';
 import { StateTransform } from './transform';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
+import { ParamDefinition as PD } from '../mol-util/param-definition';
 import { StateAction } from './action';
-import { capitalize } from 'mol-util/string';
+import { capitalize } from '../mol-util/string';
 import { StateTreeSpine } from './tree/spine';
 
-export { Transformer as StateTransformer }
+export { Transformer as StateTransformer };
 
 interface Transformer<A extends StateObject = StateObject, B extends StateObject = StateObject, P extends {} = any> {
     apply(parent: StateTransform.Ref, params?: P, props?: Partial<StateTransform.Options>): StateTransform<this>,
     toAction(): StateAction<A, void, P>,
     readonly namespace: string,
     readonly id: Transformer.Id,
-    readonly definition: Transformer.Definition<A, B, P>
+    readonly definition: Transformer.Definition<A, B, P>,
+    /** create a fresh copy of the params which can be edited in place */
+    createDefaultParams(a: A, globalCtx: unknown): P
 }
 
 namespace Transformer {
@@ -28,6 +30,10 @@ namespace Transformer {
     export type From<T extends Transformer<any, any, any>> = T extends Transformer<infer A, any, any> ? A : unknown;
     export type To<T extends Transformer<any, any, any>> = T extends Transformer<any, infer B, any> ? B : unknown;
     export type Cell<T extends Transformer<any, any, any>> = T extends Transformer<any, infer B, any> ? StateObjectCell<B> : unknown;
+
+    export function getParamDefinition<T extends Transformer>(t: T, a: From<T> | undefined, globalCtx: unknown): PD.For<Params<T>> {
+        return t.definition.params ? t.definition.params(a, globalCtx) as any : { } as any;
+    }
 
     export function is(obj: any): obj is Transformer {
         return !!obj && typeof (obj as Transformer).toAction === 'function' && typeof (obj as Transformer).apply === 'function';
@@ -38,7 +44,8 @@ namespace Transformer {
         params: P,
         /** A cache object that is purged each time the corresponding StateObject is removed or recreated. */
         cache: unknown,
-        spine: StateTreeSpine
+        spine: StateTreeSpine,
+        dependencies?: { [k: string]: StateObject<unknown> }
     }
 
     export interface UpdateParams<A extends StateObject = StateObject, B extends StateObject = StateObject, P extends {} = {}> {
@@ -48,7 +55,8 @@ namespace Transformer {
         newParams: P,
         /** A cache object that is purged each time the corresponding StateObject is removed or recreated. */
         cache: unknown,
-        spine: StateTreeSpine
+        spine: StateTreeSpine,
+        dependencies?: { [k: string]: StateObject<unknown> }
     }
 
     export interface AutoUpdateParams<A extends StateObject = StateObject, B extends StateObject = StateObject, P extends {} = {}> {
@@ -56,6 +64,12 @@ namespace Transformer {
         b: B,
         oldParams: P,
         newParams: P
+    }
+
+    export interface DisposeParams<B extends StateObject = StateObject, P extends {} = {}> {
+        b: B | undefined,
+        params: P | undefined,
+        cache: unknown
     }
 
     export enum UpdateResult { Unchanged, Updated, Recreate, Null }
@@ -86,6 +100,21 @@ namespace Transformer {
         /** By default, returns true */
         isSerializable?(params: P): { isSerializable: true } | { isSerializable: false; reason: string },
 
+        /** Parameter interpolation */
+        interpolate?(src: P, target: P, t: number, globalCtx: unknown): P
+
+        /**
+         * Cleanup resources
+         *
+         * Automatically called on deleting an object and on recreating it
+         * (i.e. when update returns UpdateResult.Recreate or UpdateResult.Null)
+         *
+         * Not called on UpdateResult.Updated because the resources might not
+         * have been invalidated. In this case, the possible cleanup has to be handled
+         * manually.
+         */
+        dispose?(params: DisposeParams<B, P>, globalCtx: unknown): void
+
         /** Custom conversion to and from JSON */
         readonly customSerialization?: { toJSON(params: P, obj?: B): any, fromJSON(data: any): P }
     }
@@ -96,6 +125,15 @@ namespace Transformer {
         readonly to: StateObject.Ctor[],
         readonly display: { readonly name: string, readonly description?: string },
         params?(a: A | undefined, globalCtx: unknown): { [K in keyof P]: PD.Any },
+
+        /**
+         * Decorators are special Transformers mapping the object to the same type.
+         *
+         * Special rules apply:
+         * - applying decorator always "inserts" it instead
+         * - applying to a decorated Transform is applied to the decorator instead (transitive)
+         */
+        readonly isDecorator?: boolean
     }
 
     const registry = new Map<Id, Transformer<any, any>>();
@@ -140,7 +178,8 @@ namespace Transformer {
             toAction() { return StateAction.fromTransformer(t); },
             namespace,
             id,
-            definition
+            definition,
+            createDefaultParams(a, globalCtx) { return definition.params ? PD.getDefaultValues( definition.params(a, globalCtx)) : {} as any; }
         };
         registry.set(id, t);
         _index(t);
@@ -163,7 +202,8 @@ namespace Transformer {
             to: B | B[],
             /** The source StateObject can be undefined: used for generating docs. */
             params?: PD.For<P> | ((a: StateObject.From<A> | undefined, globalCtx: any) => PD.For<P>),
-            display?: string | { name: string, description?: string }
+            display?: string | { name: string, description?: string },
+            isDecorator?: boolean
         }
 
         export interface Root {
@@ -182,13 +222,14 @@ namespace Transformer {
                 display: typeof info.display === 'string'
                     ? { name: info.display }
                     : !!info.display
-                    ? info.display
-                    : { name: capitalize(info.name.replace(/[-]/g, ' ')) },
+                        ? info.display
+                        : { name: capitalize(info.name.replace(/[-]/g, ' ')) },
                 params: typeof info.params === 'object'
                     ? () => info.params as any
                     : !!info.params
-                    ? info.params as any
-                    : void 0,
+                        ? info.params as any
+                        : void 0,
+                isDecorator: info.isDecorator,
                 ...def
             });
         }
@@ -209,5 +250,5 @@ namespace Transformer {
         display: { name: 'Root', description: 'For internal use.' },
         apply() { throw new Error('should never be applied'); },
         update() { return UpdateResult.Unchanged; }
-    })
+    });
 }

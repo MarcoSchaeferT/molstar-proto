@@ -1,16 +1,20 @@
 /**
- * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { PluginCommands } from '../../command';
+import { Structure } from '../../../mol-model/structure';
+import { PluginStateSnapshotManager } from '../../../mol-plugin-state/manager/snapshots';
+import { PluginStateObject as SO } from '../../../mol-plugin-state/objects';
+import { State, StateTransform, StateTree } from '../../../mol-state';
+import { getFormattedTime } from '../../../mol-util/date';
+import { download } from '../../../mol-util/download';
+import { urlCombine } from '../../../mol-util/url';
+import { PluginCommands } from '../../commands';
+import { PluginConfig } from '../../config';
 import { PluginContext } from '../../context';
-import { StateTree, StateTransform, State } from 'mol-state';
-import { PluginStateSnapshotManager } from 'mol-plugin/state/snapshots';
-import { PluginStateObject as SO } from '../../state/objects';
-import { getFormattedTime } from 'mol-util/date';
-import { readFromFile } from 'mol-util/data-source';
 
 export function registerDefault(ctx: PluginContext) {
     SyncBehaviors(ctx);
@@ -21,22 +25,22 @@ export function registerDefault(ctx: PluginContext) {
     ToggleExpanded(ctx);
     ToggleVisibility(ctx);
     Highlight(ctx);
-    ClearHighlight(ctx);
+    ClearHighlights(ctx);
     Snapshots(ctx);
 }
 
 export function SyncBehaviors(ctx: PluginContext) {
-    ctx.events.state.object.created.subscribe(o => {
+    ctx.state.events.object.created.subscribe(o => {
         if (!SO.isBehavior(o.obj)) return;
         o.obj.data.register(o.ref);
     });
 
-    ctx.events.state.object.removed.subscribe(o => {
+    ctx.state.events.object.removed.subscribe(o => {
         if (!SO.isBehavior(o.obj)) return;
         o.obj.data.unregister();
     });
 
-    ctx.events.state.object.updated.subscribe(o => {
+    ctx.state.events.object.updated.subscribe(o => {
         if (o.action === 'recreate') {
             if (o.oldObj && SO.isBehavior(o.oldObj)) o.oldObj.data.unregister();
             if (o.obj && SO.isBehavior(o.obj)) o.obj.data.register(o.ref);
@@ -58,7 +62,7 @@ export function ApplyAction(ctx: PluginContext) {
 
 export function RemoveObject(ctx: PluginContext) {
     function remove(state: State, ref: string) {
-        const tree = state.build().delete(ref).getTree();
+        const tree = state.build().delete(ref);
         return ctx.runTask(state.updateTree(tree));
     }
 
@@ -72,7 +76,8 @@ export function RemoveObject(ctx: PluginContext) {
                 const children = tree.children.get(curr.parent);
                 if (curr.parent === curr.ref || children.size > 1) return remove(state, curr.ref);
                 const parent = tree.transforms.get(curr.parent);
-                if (!parent.props || !parent.props.isGhost) return remove(state, curr.ref);
+                // TODO: should this use "cell state" instead?
+                if (!parent.state.isGhost) return remove(state, curr.ref);
                 curr = parent;
             }
         } else {
@@ -86,10 +91,10 @@ export function ToggleExpanded(ctx: PluginContext) {
 }
 
 export function ToggleVisibility(ctx: PluginContext) {
-    PluginCommands.State.ToggleVisibility.subscribe(ctx, ({ state, ref }) => setVisibility(state, ref, !state.cellStates.get(ref).isHidden));
+    PluginCommands.State.ToggleVisibility.subscribe(ctx, ({ state, ref }) => setSubtreeVisibility(state, ref, !state.cells.get(ref)!.state.isHidden));
 }
 
-function setVisibility(state: State, root: StateTransform.Ref, value: boolean) {
+export function setSubtreeVisibility(state: State, root: StateTransform.Ref, value: boolean) {
     StateTree.doPreOrder(state.tree, state.transforms.get(root), { state, value }, setVisibilityVisitor);
 }
 
@@ -97,88 +102,94 @@ function setVisibilityVisitor(t: StateTransform, tree: StateTree, ctx: { state: 
     ctx.state.updateCellState(t.ref, { isHidden: ctx.value });
 }
 
-// TODO make isHighlighted and isSelect part of StateObjectCell.State and subscribe from there???
-// TODO select structures of subtree
-// TODO should also work for volumes and shapes
 export function Highlight(ctx: PluginContext) {
-    PluginCommands.State.Highlight.subscribe(ctx, ({ state, ref }) => {
-        // const cell = state.select(ref)[0]
-        // const repr = cell && SO.isRepresentation3D(cell.obj) ? cell.obj.data : undefined
-        // if (cell && cell.obj && cell.obj.type === PluginStateObject.Molecule.Structure.type) {
-        //     ctx.behaviors.canvas3d.highlight.next({ current: { loci: Structure.Loci(cell.obj.data) } });
-        // } else if (repr) {
-        //     ctx.behaviors.canvas3d.highlight.next({ current: { loci: EveryLoci, repr } });
-        // }
+    PluginCommands.Interactivity.Object.Highlight.subscribe(ctx, ({ state, ref }) => {
+        ctx.managers.interactivity.lociHighlights.clearHighlights();
+
+        const refs = typeof ref === 'string' ? [ref] : ref;
+        for (const r of refs) {
+            const cell = state.cells.get(r);
+            if (!cell) continue;
+            if (SO.Molecule.Structure.is(cell.obj)) {
+                ctx.managers.interactivity.lociHighlights.highlight({ loci: Structure.Loci(cell.obj.data) }, false);
+            } else if (cell && SO.isRepresentation3D(cell.obj)) {
+                const { repr } = cell.obj.data;
+                ctx.managers.interactivity.lociHighlights.highlight({ loci: repr.getLoci(), repr }, false);
+            } else if (SO.Molecule.Structure.Selections.is(cell.obj)) {
+                for (const entry of cell.obj.data) {
+                    ctx.managers.interactivity.lociHighlights.highlight({ loci: entry.loci }, false);
+                }
+            }
+        }
+
+        // TODO: highlight volumes?
+        // TODO: select structures of subtree?
     });
 }
 
-export function ClearHighlight(ctx: PluginContext) {
-    PluginCommands.State.ClearHighlight.subscribe(ctx, ({ state, ref }) => {
-        // ctx.behaviors.canvas3d.highlight.next({ current: { loci: EmptyLoci } });
+export function ClearHighlights(ctx: PluginContext) {
+    PluginCommands.Interactivity.ClearHighlights.subscribe(ctx, () => {
+        ctx.managers.interactivity.lociHighlights.clearHighlights();
     });
 }
 
 export function Snapshots(ctx: PluginContext) {
+    ctx.config.set(PluginConfig.State.CurrentServer, ctx.config.get(PluginConfig.State.DefaultServer));
+
     PluginCommands.State.Snapshots.Clear.subscribe(ctx, () => {
-        ctx.state.snapshots.clear();
+        ctx.managers.snapshot.clear();
     });
 
     PluginCommands.State.Snapshots.Remove.subscribe(ctx, ({ id }) => {
-        ctx.state.snapshots.remove(id);
+        ctx.managers.snapshot.remove(id);
     });
 
     PluginCommands.State.Snapshots.Add.subscribe(ctx, ({ name, description, params }) => {
         const entry = PluginStateSnapshotManager.Entry(ctx.state.getSnapshot(params), { name, description });
-        ctx.state.snapshots.add(entry);
+        ctx.managers.snapshot.add(entry);
     });
 
     PluginCommands.State.Snapshots.Replace.subscribe(ctx, ({ id, params }) => {
-        ctx.state.snapshots.replace(id, ctx.state.getSnapshot(params));
+        ctx.managers.snapshot.replace(id, ctx.state.getSnapshot(params));
     });
 
     PluginCommands.State.Snapshots.Move.subscribe(ctx, ({ id, dir }) => {
-        ctx.state.snapshots.move(id, dir);
+        ctx.managers.snapshot.move(id, dir);
     });
 
     PluginCommands.State.Snapshots.Apply.subscribe(ctx, ({ id }) => {
-        const snapshot = ctx.state.snapshots.setCurrent(id);
+        const snapshot = ctx.managers.snapshot.setCurrent(id);
         if (!snapshot) return;
         return ctx.state.setSnapshot(snapshot);
     });
 
-    PluginCommands.State.Snapshots.Upload.subscribe(ctx, ({ name, description, playOnLoad, serverUrl }) => {
-        return fetch(`${serverUrl}/set?name=${encodeURIComponent(name || '')}&description=${encodeURIComponent(description || '')}`, {
+    PluginCommands.State.Snapshots.Upload.subscribe(ctx, ({ name, description, playOnLoad, serverUrl, params }) => {
+        return fetch(urlCombine(serverUrl, `set?name=${encodeURIComponent(name || '')}&description=${encodeURIComponent(description || '')}`), {
             method: 'POST',
             mode: 'cors',
             referrer: 'no-referrer',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify(ctx.state.snapshots.getRemoteSnapshot({ name, description, playOnLoad }))
+            body: JSON.stringify(ctx.managers.snapshot.getStateSnapshot({ name, description, playOnLoad }))
         }) as any as Promise<void>;
     });
 
     PluginCommands.State.Snapshots.Fetch.subscribe(ctx, async ({ url }) => {
         const json = await ctx.runTask(ctx.fetch({ url, type: 'json' })); //  fetch(url, { referrer: 'no-referrer' });
-        await ctx.state.snapshots.setRemoteSnapshot(json.data);
+        await ctx.managers.snapshot.setStateSnapshot(json.data);
     });
 
-    PluginCommands.State.Snapshots.DownloadToFile.subscribe(ctx, ({ name }) => {
-        const element = document.createElement('a');
-        const json = JSON.stringify(ctx.state.getSnapshot(), null, 2);
-        element.setAttribute('href', 'data:application/json;charset=utf-8,' + encodeURIComponent(json));
-        element.setAttribute('download', `mol-star_state_${(name || getFormattedTime())}.json`);
-        element.style.display = 'none';
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
+    PluginCommands.State.Snapshots.DownloadToFile.subscribe(ctx, async ({ name, type, params }) => {
+        const filename = `mol-star_state_${(name || getFormattedTime())}.${type === 'json' ? 'molj' : 'molx'}`;
+        const data = await ctx.managers.snapshot.serialize({ type, params });
+        download(data, `${filename}`);
     });
 
-    PluginCommands.State.Snapshots.OpenFile.subscribe(ctx, async ({ file }) => {
-        try {
-            const data = await readFromFile(file, 'string').run();
-            const snapshot = JSON.parse(data as string);
-            return ctx.state.setSnapshot(snapshot);
-        } catch (e) {
-            ctx.log.error(`Reading JSON state: ${e}`);
-        }
+    PluginCommands.State.Snapshots.OpenFile.subscribe(ctx, ({ file }) => {
+        return ctx.managers.snapshot.open(file);
+    });
+
+    PluginCommands.State.Snapshots.OpenUrl.subscribe(ctx, async ({ url, type }) => {
+        const data = await ctx.runTask(ctx.fetch({ url, type: 'binary' }));
+        return ctx.managers.snapshot.open(new File([data], `state.${type}`));
     });
 }

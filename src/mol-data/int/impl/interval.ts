@@ -1,14 +1,15 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import Tuple from '../tuple'
+import Tuple from '../tuple';
 
 export const Empty = Tuple.Zero;
 export function ofRange(min: number, max: number) { return max < min ? Tuple.create(min, min) : Tuple.create(min, max + 1); }
 export function ofBounds(start: number, end: number) { return end <= start ? Tuple.create(start, start) : Tuple.create(start, end); }
+export function ofLength(length: number) { return length < 0 ? Tuple.create(0, 0) : Tuple.create(0, length); }
 export const is = Tuple.is;
 
 export const start = Tuple.fst;
@@ -17,6 +18,7 @@ export const min = Tuple.fst;
 export function max(i: Tuple) { return Tuple.snd(i) - 1; }
 export function size(i: Tuple) { return Tuple.snd(i) - Tuple.fst(i); }
 export const hashCode = Tuple.hashCode;
+export const toString = Tuple.toString;
 
 export function has(int: Tuple, v: number) { return Tuple.fst(int) <= v && v < Tuple.snd(int); }
 /** Returns the index of `x` in `set` or -1 if not found. */
@@ -62,5 +64,5 @@ export function intersect(a: Tuple, b: Tuple) {
 }
 
 export function intersectionSize(a: Tuple, b: Tuple) {
-    return size(findRange(a, min(b), max(b)))
+    return size(findRange(a, min(b), max(b)));
 }

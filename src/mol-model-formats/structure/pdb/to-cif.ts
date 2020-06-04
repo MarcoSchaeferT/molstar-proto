@@ -5,211 +5,19 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { substringStartsWith } from 'mol-util/string';
-import { CifField, CifCategory, CifFrame } from 'mol-io/reader/cif';
-import { mmCIF_Schema } from 'mol-io/reader/cif/schema/mmcif';
-import { TokenBuilder, Tokenizer, Tokens } from 'mol-io/reader/common/text/tokenizer';
-import { PdbFile } from 'mol-io/reader/pdb/schema';
+import { substringStartsWith } from '../../../mol-util/string';
+import { CifCategory, CifFrame } from '../../../mol-io/reader/cif';
+import { Tokenizer } from '../../../mol-io/reader/common/text/tokenizer';
+import { PdbFile } from '../../../mol-io/reader/pdb/schema';
 import { parseCryst1, parseRemark350, parseMtrix } from './assembly';
-import { WaterNames } from 'mol-model/structure/model/types';
 import { parseHelix, parseSheet } from './secondary-structure';
-
-function _entity(): { [K in keyof mmCIF_Schema['entity']]?: CifField } {
-    return {
-        id: CifField.ofStrings(['1', '2', '3']),
-        type: CifField.ofStrings(['polymer', 'non-polymer', 'water'])
-    }
-}
-
-type AtomSiteTemplate = typeof atom_site_template extends (...args: any) => infer T ? T : never
-function atom_site_template(data: string, count: number) {
-    const str = () => [] as string[];
-    const ts = () => TokenBuilder.create(data, 2 * count);
-    return {
-        index: 0,
-        count,
-        group_PDB: ts(),
-        id: str(),
-        auth_atom_id: ts(),
-        label_alt_id: ts(),
-        auth_comp_id: ts(),
-        auth_asym_id: ts(),
-        auth_seq_id: ts(),
-        pdbx_PDB_ins_code: ts(),
-        Cartn_x: ts(),
-        Cartn_y: ts(),
-        Cartn_z: ts(),
-        occupancy: ts(),
-        B_iso_or_equiv: ts(),
-        type_symbol: ts(),
-        pdbx_PDB_model_num: str(),
-        label_entity_id: str()
-    };
-}
-
-function _atom_site(sites: AtomSiteTemplate): { [K in keyof mmCIF_Schema['atom_site']]?: CifField } {
-    const auth_asym_id = CifField.ofTokens(sites.auth_asym_id);
-    const auth_atom_id = CifField.ofTokens(sites.auth_atom_id);
-    const auth_comp_id = CifField.ofTokens(sites.auth_comp_id);
-    const auth_seq_id = CifField.ofTokens(sites.auth_seq_id);
-
-    return {
-        auth_asym_id,
-        auth_atom_id,
-        auth_comp_id,
-        auth_seq_id,
-        B_iso_or_equiv: CifField.ofTokens(sites.B_iso_or_equiv),
-        Cartn_x: CifField.ofTokens(sites.Cartn_x),
-        Cartn_y: CifField.ofTokens(sites.Cartn_y),
-        Cartn_z: CifField.ofTokens(sites.Cartn_z),
-        group_PDB: CifField.ofTokens(sites.group_PDB),
-        id: CifField.ofStrings(sites.id),
-
-        label_alt_id: CifField.ofTokens(sites.label_alt_id),
-
-        label_asym_id: auth_asym_id,
-        label_atom_id: auth_atom_id,
-        label_comp_id: auth_comp_id,
-        label_seq_id: auth_seq_id,
-        label_entity_id: CifField.ofStrings(sites.label_entity_id),
-
-        occupancy: CifField.ofTokens(sites.occupancy),
-        type_symbol: CifField.ofTokens(sites.type_symbol),
-
-        pdbx_PDB_ins_code: CifField.ofTokens(sites.pdbx_PDB_ins_code),
-        pdbx_PDB_model_num: CifField.ofStrings(sites.pdbx_PDB_model_num)
-    };
-}
-
-function getEntityId(residueName: string, isHet: boolean) {
-    if (isHet) {
-        if (WaterNames.has(residueName)) return '3';
-        return '2';
-    }
-    return '1';
-}
-
-export function guessElementSymbol(tokens: Tokens, str: string, start: number, end: number) {
-    let s = start, e = end - 1
-
-    // trim spaces and numbers
-    let c = str.charCodeAt(s)
-    while ((c === 32 || (c >= 48 && c <= 57)) && s <= e) c = str.charCodeAt(++s)
-    c = str.charCodeAt(e)
-    while ((c === 32 || (c >= 48 && c <= 57)) && e >= s) c = str.charCodeAt(--e)
-
-    ++e
-
-    if (s === e) return TokenBuilder.add(tokens, s, e) // empty
-    if (s + 1 === e) return TokenBuilder.add(tokens, s, e) // one char
-
-    c = str.charCodeAt(s)
-
-    if (s + 2 === e) { // two chars
-        const c2 = str.charCodeAt(s + 1)
-        if (
-            ((c === 78 || c === 110) && (c2 === 65 || c2 ===  97)) || // NA na Na nA
-            ((c === 67 || c ===  99) && (c2 === 76 || c2 === 108)) || // CL
-            ((c === 70 || c === 102) && (c2 === 69 || c2 === 101))    // FE
-        ) return TokenBuilder.add(tokens, s, s + 2)
-    }
-
-    if (
-        c === 67 || c ===  99 || // C c
-        c === 72 || c === 104 || // H h
-        c === 78 || c === 110 || // N n
-        c === 79 || c === 111 || // O o
-        c === 80 || c === 112 || // P p
-        c === 83 || c === 115    // S s
-    ) return TokenBuilder.add(tokens, s, s + 1)
-
-    TokenBuilder.add(tokens, s, s) // no reasonable guess, add empty token
-}
-
-function addAtom(sites: AtomSiteTemplate, model: string, data: Tokenizer, s: number, e: number, isHet: boolean) {
-    const { data: str } = data;
-    const length = e - s;
-
-    // TODO: filter invalid atoms
-
-    // COLUMNS        DATA TYPE       CONTENTS
-    // --------------------------------------------------------------------------------
-    // 1 -  6        Record name     "ATOM  "
-    TokenBuilder.addToken(sites.group_PDB, Tokenizer.trim(data, s, s + 6));
-
-    // 7 - 11        Integer         Atom serial number.
-    // TODO: support HEX
-    Tokenizer.trim(data, s + 6, s + 11);
-    sites.id[sites.index] = data.data.substring(data.tokenStart, data.tokenEnd);
-
-    // 13 - 16        Atom            Atom name.
-    TokenBuilder.addToken(sites.auth_atom_id, Tokenizer.trim(data, s + 12, s + 16));
-
-    // 17             Character       Alternate location indicator.
-    if (str.charCodeAt(s + 16) === 32) { // ' '
-        TokenBuilder.add(sites.label_alt_id, 0, 0);
-    } else {
-        TokenBuilder.add(sites.label_alt_id, s + 16, s + 17);
-    }
-
-    // 18 - 20        Residue name    Residue name.
-    TokenBuilder.addToken(sites.auth_comp_id, Tokenizer.trim(data, s + 17, s + 20));
-    const residueName = str.substring(data.tokenStart, data.tokenEnd);
-
-    // 22             Character       Chain identifier.
-    TokenBuilder.add(sites.auth_asym_id, s + 21, s + 22);
-
-    // 23 - 26        Integer         Residue sequence number.
-    // TODO: support HEX
-    TokenBuilder.addToken(sites.auth_seq_id, Tokenizer.trim(data, s + 22, s + 26));
-
-    // 27             AChar           Code for insertion of residues.
-    if (str.charCodeAt(s + 26) === 32) { // ' '
-        TokenBuilder.add(sites.label_alt_id, 0, 0);
-    } else {
-        TokenBuilder.add(sites.label_alt_id, s + 26, s + 27);
-    }
-
-    // 31 - 38        Real(8.3)       Orthogonal coordinates for X in Angstroms.
-    TokenBuilder.addToken(sites.Cartn_x, Tokenizer.trim(data, s + 30, s + 38));
-
-    // 39 - 46        Real(8.3)       Orthogonal coordinates for Y in Angstroms.
-    TokenBuilder.addToken(sites.Cartn_y, Tokenizer.trim(data, s + 38, s + 46));
-
-    // 47 - 54        Real(8.3)       Orthogonal coordinates for Z in Angstroms.
-    TokenBuilder.addToken(sites.Cartn_z, Tokenizer.trim(data, s + 46, s + 54));
-
-    // 55 - 60        Real(6.2)       Occupancy.
-    TokenBuilder.addToken(sites.occupancy, Tokenizer.trim(data, s + 54, s + 60));
-
-    // 61 - 66        Real(6.2)       Temperature factor (Default = 0.0).
-    if (length >= 66) {
-        TokenBuilder.addToken(sites.B_iso_or_equiv, Tokenizer.trim(data, s + 60, s + 66));
-    } else {
-        TokenBuilder.add(sites.label_alt_id, 0, 0);
-    }
-
-    // 73 - 76        LString(4)      Segment identifier, left-justified.
-    // ignored
-
-    // 77 - 78        LString(2)      Element symbol, right-justified.
-    if (length >= 78) {
-        Tokenizer.trim(data, s + 76, s + 78);
-
-        if (data.tokenStart < data.tokenEnd) {
-            TokenBuilder.addToken(sites.type_symbol, data);
-        } else {
-            guessElementSymbol(sites.type_symbol, str, s + 12, s + 16)
-        }
-    } else {
-        guessElementSymbol(sites.type_symbol, str, s + 12, s + 16)
-    }
-
-    sites.label_entity_id[sites.index] = getEntityId(residueName, isHet);
-    sites.pdbx_PDB_model_num[sites.index] = model;
-
-    sites.index++;
-}
+import { parseCmpnd, parseHetnam } from './entity';
+import { ComponentBuilder } from '../common/component';
+import { EntityBuilder } from '../common/entity';
+import { Column } from '../../../mol-data/db';
+import { getMoleculeType } from '../../../mol-model/structure/model/types';
+import { getAtomSiteTemplate, addAtom, getAtomSite } from './atom-site';
+import { addAnisotropic, getAnisotropicTemplate, getAnisotropic } from './anisotropic';
 
 export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
     const { lines } = pdb;
@@ -218,11 +26,13 @@ export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
 
     // Count the atoms
     let atomCount = 0;
+    let anisotropicCount = 0;
     for (let i = 0, _i = lines.count; i < _i; i++) {
         const s = indices[2 * i], e = indices[2 * i + 1];
         switch (data[s]) {
             case 'A':
                 if (substringStartsWith(data, s, e, 'ATOM  ')) atomCount++;
+                else if (substringStartsWith(data, s, e, 'ANISOU')) anisotropicCount++;
                 break;
             case 'H':
                 if (substringStartsWith(data, s, e, 'HETATM')) atomCount++;
@@ -230,9 +40,11 @@ export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
         }
     }
 
-    const atom_site = atom_site_template(data, atomCount);
-
+    const atomSite = getAtomSiteTemplate(data, atomCount);
+    const anisotropic = getAnisotropicTemplate(data, anisotropicCount);
+    const entityBuilder = new EntityBuilder();
     const helperCategories: CifCategory[] = [];
+    const heteroNames: [string, string][] = [];
 
     let modelNum = 0, modelStr = '';
 
@@ -240,21 +52,33 @@ export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
         let s = indices[2 * i], e = indices[2 * i + 1];
         switch (data[s]) {
             case 'A':
-                if (!substringStartsWith(data, s, e, 'ATOM  ')) continue;
-                if (!modelNum) { modelNum++; modelStr = '' + modelNum; }
-                addAtom(atom_site, modelStr, tokenizer, s, e, false);
+                if (substringStartsWith(data, s, e, 'ATOM  ')) {
+                    if (!modelNum) { modelNum++; modelStr = '' + modelNum; }
+                    addAtom(atomSite, modelStr, tokenizer, s, e);
+                } else if (substringStartsWith(data, s, e, 'ANISOU')) {
+                    addAnisotropic(anisotropic, modelStr, tokenizer, s, e);
+                }
                 break;
             case 'C':
                 if (substringStartsWith(data, s, e, 'CRYST1')) {
                     helperCategories.push(...parseCryst1(pdb.id || '?', data.substring(s, e)));
+                } else if (substringStartsWith(data, s, e, 'CONNECT')) {
+                    // TODO: CONNECT records => struct_conn
+                } else if (substringStartsWith(data, s, e, 'COMPND')) {
+                    let j = i + 1;
+                    while (true) {
+                        s = indices[2 * j]; e = indices[2 * j + 1];
+                        if (!substringStartsWith(data, s, e, 'COMPND')) break;
+                        j++;
+                    }
+                    entityBuilder.setCompounds(parseCmpnd(lines, i, j));
+                    i = j - 1;
                 }
-                // TODO CONNECT records => struct_conn
-                // TODO COMPND records => entity
                 break;
             case 'H':
                 if (substringStartsWith(data, s, e, 'HETATM')) {
                     if (!modelNum) { modelNum++; modelStr = '' + modelNum; }
-                    addAtom(atom_site, modelStr, tokenizer, s, e, true);
+                    addAtom(atomSite, modelStr, tokenizer, s, e);
                 } else if (substringStartsWith(data, s, e, 'HELIX')) {
                     let j = i + 1;
                     while (true) {
@@ -264,8 +88,16 @@ export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
                     }
                     helperCategories.push(parseHelix(lines, i, j));
                     i = j - 1;
+                } else if (substringStartsWith(data, s, e, 'HETNAM')) {
+                    let j = i + 1;
+                    while (true) {
+                        s = indices[2 * j]; e = indices[2 * j + 1];
+                        if (!substringStartsWith(data, s, e, 'HETNAM')) break;
+                        j++;
+                    }
+                    heteroNames.push(...Array.from(parseHetnam(lines, i, j).entries()));
+                    i = j - 1;
                 }
-                // TODO HETNAM records => chem_comp (at least partially, needs to be completed with common bases and amino acids)
                 break;
             case 'M':
                 if (substringStartsWith(data, s, e, 'MODEL ')) {
@@ -282,10 +114,10 @@ export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
                     helperCategories.push(...parseMtrix(lines, i, j));
                     i = j - 1;
                 }
-                // TODO MODRES records => pdbx_struct_mod_residue
+                // TODO: MODRES records => pdbx_struct_mod_residue
                 break;
             case 'O':
-                // TODO ORIGX record => cif.database_PDB_matrix.origx, cif.database_PDB_matrix.origx_vector
+                // TODO: ORIGX record => cif.database_PDB_matrix.origx, cif.database_PDB_matrix.origx_vector
                 break;
             case 'R':
                 if (substringStartsWith(data, s, e, 'REMARK 350')) {
@@ -310,14 +142,30 @@ export async function pdbToMmCif(pdb: PdbFile): Promise<CifFrame> {
                     helperCategories.push(parseSheet(lines, i, j));
                     i = j - 1;
                 }
-                // TODO SCALE record => cif.atom_sites.fract_transf_matrix, cif.atom_sites.fract_transf_vector
+                // TODO: SCALE record => cif.atom_sites.fract_transf_matrix, cif.atom_sites.fract_transf_vector
                 break;
         }
     }
 
+    // build entity and chem_comp categories
+    const seqIds = Column.ofIntTokens(atomSite.auth_seq_id);
+    const atomIds = Column.ofStringTokens(atomSite.auth_atom_id);
+    const compIds = Column.ofStringTokens(atomSite.auth_comp_id);
+    const asymIds = Column.ofStringTokens(atomSite.auth_asym_id);
+    const componentBuilder = new ComponentBuilder(seqIds, atomIds);
+    componentBuilder.setNames(heteroNames);
+    entityBuilder.setNames(heteroNames);
+    for (let i = 0, il = compIds.rowCount; i < il; ++i) {
+        const compId = compIds.value(i);
+        const moleculeType = getMoleculeType(componentBuilder.add(compId, i).type, compId);
+        atomSite.label_entity_id[i] = entityBuilder.getEntityId(compId, moleculeType, asymIds.value(i));
+    }
+
     const categories = {
-        entity: CifCategory.ofFields('entity', _entity()),
-        atom_site: CifCategory.ofFields('atom_site', _atom_site(atom_site))
+        entity: CifCategory.ofTable('entity', entityBuilder.getEntityTable()),
+        chem_comp: CifCategory.ofTable('chem_comp', componentBuilder.getChemCompTable()),
+        atom_site: CifCategory.ofFields('atom_site', getAtomSite(atomSite)),
+        atom_site_anisotrop: CifCategory.ofFields('atom_site_anisotrop', getAnisotropic(anisotropic))
     } as any;
 
     for (const c of helperCategories) {

@@ -1,16 +1,16 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Column, Table } from 'mol-data/db'
-import { Segmentation } from 'mol-data/int'
-import { mmCIF_Schema as mmCIF } from 'mol-io/reader/cif/schema/mmcif'
-import { ElementSymbol, MoleculeType } from '../../types'
+import { Column, Table } from '../../../../../mol-data/db';
+import { Segmentation } from '../../../../../mol-data/int';
+import { mmCIF_Schema as mmCIF } from '../../../../../mol-io/reader/cif/schema/mmcif';
+import { ElementSymbol, MoleculeType, PolymerType } from '../../types';
 import { ChainIndex, EntityIndex, ResidueIndex, ElementIndex } from '../../indexing';
-import SortedRanges from 'mol-data/int/sorted-ranges';
+import SortedRanges from '../../../../../mol-data/int/sorted-ranges';
 
 export const AtomsSchema = {
     /**
@@ -35,6 +35,16 @@ export const AtomsSchema = {
      */
     label_alt_id: mmCIF.atom_site.label_alt_id,
     /**
+     * A component of the identifier for this atom site.
+     * For mmCIF files, this points to chem_comp.id in the CHEM_COMP category.
+     */
+    label_comp_id: mmCIF.atom_site.label_comp_id,
+    /**
+     * An alternative identifier for atom_site.label_comp_id that may be provided by an author
+     * in order to match the identification used in the publication that describes the structure.
+     */
+    auth_comp_id: mmCIF.atom_site.auth_comp_id,
+    /**
      * The net integer charge assigned to this atom.
      * This is the formal charge assignment normally found in chemical diagrams.
      */
@@ -50,7 +60,7 @@ export const AtomsSchema = {
 };
 
 export type AtomsSchema = typeof AtomsSchema
-export interface Atoms extends Table<AtomsSchema> { }
+export type Atoms = Table<AtomsSchema>
 
 export const ResiduesSchema = {
     /**
@@ -58,16 +68,6 @@ export const ResiduesSchema = {
      * compatibility with the original Protein Data Bank format, and only for that purpose.
      */
     group_PDB: mmCIF.atom_site.group_PDB,
-    /**
-     * A component of the identifier for this atom site.
-     * For mmCIF files, this points to chem_comp.id in the CHEM_COMP category.
-     */
-    label_comp_id: mmCIF.atom_site.label_comp_id,
-    /**
-     * An alternative identifier for atom_site.label_comp_id that may be provided by an author
-     * in order to match the identification used in the publication that describes the structure.
-     */
-    auth_comp_id: mmCIF.atom_site.auth_comp_id,
     /**
      * For mmCIF files, this points to entity_poly_seq.num in the ENTITY_POLY_SEQ category.
      */
@@ -81,9 +81,11 @@ export const ResiduesSchema = {
      * PDB insertion code.
      */
     pdbx_PDB_ins_code: mmCIF.atom_site.pdbx_PDB_ins_code,
+
+    // comp_id is part of atoms because of microheterogeneity
 };
 export type ResiduesSchema = typeof ResiduesSchema
-export interface Residues extends Table<ResiduesSchema> { }
+export type Residues = Table<ResiduesSchema>
 
 export const ChainsSchema = {
     /**
@@ -100,9 +102,9 @@ export const ChainsSchema = {
      * For mmCIF files, this points to _entity.id in the ENTITY category.
      */
     label_entity_id: mmCIF.atom_site.label_entity_id
-}
+};
 export type ChainsSchema = typeof ChainsSchema
-export interface Chains extends Table<ChainsSchema> { }
+export type Chains = Table<ChainsSchema>
 
 export interface AtomicData {
     atoms: Atoms,
@@ -113,8 +115,10 @@ export interface AtomicData {
 export interface AtomicDerivedData {
     readonly residue: {
         readonly traceElementIndex: ArrayLike<ElementIndex | -1>
-        readonly directionElementIndex: ArrayLike<ElementIndex | -1>
+        readonly directionFromElementIndex: ArrayLike<ElementIndex | -1>
+        readonly directionToElementIndex: ArrayLike<ElementIndex | -1>
         readonly moleculeType: ArrayLike<MoleculeType>
+        readonly polymerType: ArrayLike<PolymerType>
     }
 }
 
@@ -137,6 +141,8 @@ export interface AtomicSegments {
 export interface AtomicIndex {
     /** @returns index or -1 if not present. */
     getEntityFromChain(cI: ChainIndex): EntityIndex,
+    /** @returns index or -1 if not present. */
+    findEntity(label_asym_id: string): EntityIndex
 
     /**
      * Find chain using label_ mmCIF properties
@@ -203,7 +209,7 @@ export interface AtomicIndex {
 
 export namespace AtomicIndex {
     export interface ChainLabelKey { label_entity_id: string, label_asym_id: string }
-    export interface ChainAuthKey { auth_asym_id: string }
+    export interface ChainAuthKey { auth_asym_id: string, auth_seq_id: number }
 
     export interface ResidueKey { label_entity_id: string, label_asym_id: string, auth_seq_id: number, pdbx_PDB_ins_code?: string }
     export function EmptyResidueKey(): ResidueKey { return { label_entity_id: '', label_asym_id: '', auth_seq_id: 0, pdbx_PDB_ins_code: void 0 }; }
@@ -221,7 +227,7 @@ export interface AtomicRanges {
     cyclicPolymerMap: Map<ResidueIndex, ResidueIndex>
 }
 
-type _Hierarchy = AtomicData & AtomicSegments & AtomicRanges
+type _Hierarchy = AtomicData & AtomicSegments
 export interface AtomicHierarchy extends _Hierarchy {
     index: AtomicIndex
     derived: AtomicDerivedData
@@ -236,5 +242,9 @@ export namespace AtomicHierarchy {
     /** End residue exclusive */
     export function chainEndResidueIndexExcl(segs: AtomicSegments, cI: ChainIndex) {
         return segs.residueAtomSegments.index[segs.chainAtomSegments.offsets[cI + 1] - 1] + 1 as ResidueIndex;
+    }
+
+    export function chainResidueCount(segs: AtomicSegments, cI: ChainIndex) {
+        return chainEndResidueIndexExcl(segs, cI) - chainStartResidueIndex(segs, cI);
     }
 }

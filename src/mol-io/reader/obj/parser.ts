@@ -4,9 +4,9 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { ReaderResult as Result } from '../result'
-import { Task, RuntimeContext } from 'mol-task'
-import { Mesh } from 'mol-geo/geometry/mesh/mesh';
+import { ReaderResult as Result } from '../result';
+import { Task, RuntimeContext } from '../../../mol-task';
+import { Mesh } from '../../../mol-geo/geometry/mesh/mesh';
 
 async function parseInternal(data: string, ctx: RuntimeContext): Promise<Result<Mesh>> {
     // TODO

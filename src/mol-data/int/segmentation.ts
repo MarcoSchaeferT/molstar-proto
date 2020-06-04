@@ -4,9 +4,9 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import Interval from './interval'
-import OrderedSet from './ordered-set'
-import * as Impl from './impl/segmentation'
+import Interval from './interval';
+import OrderedSet from './ordered-set';
+import * as Impl from './impl/segmentation';
 
 namespace Segmentation {
     export interface Segment<I extends number = number> { index: I, start: number, end: number }
@@ -18,7 +18,7 @@ namespace Segmentation {
     export const getSegment: <T extends number = number, I extends number = number>(segs: Segmentation<T, I>, value: T) => number = Impl.getSegment as any;
     export const projectValue: <T extends number = number, I extends number = number>(segs: Segmentation<T, I>, set: OrderedSet<T>, value: T) => Interval = Impl.projectValue as any;
 
-    // Segment iterator that mutates a single segment object to mark all the segments.
+    /** Segment iterator that mutates a single segment object to mark all the segments. */
     export const transientSegments: <T extends number = number, I extends number = number>(segs: Segmentation<T, I>, set: OrderedSet<T>, segment?: Segment) => Impl.SegmentIterator<I> = Impl.segments as any;
 
     export type SegmentIterator<I extends number = number> = Impl.SegmentIterator<I>
@@ -33,4 +33,4 @@ interface Segmentation<T extends number = number, I extends number = number> {
     readonly count: number
 }
 
-export default Segmentation
+export default Segmentation;

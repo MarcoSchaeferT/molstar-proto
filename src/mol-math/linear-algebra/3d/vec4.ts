@@ -19,9 +19,14 @@
 
 import Mat4 from './mat4';
 import { EPSILON } from '../3d';
-import { NumberArray } from 'mol-util/type-helpers';
+import { NumberArray } from '../../../mol-util/type-helpers';
+import { Sphere3D } from '../../geometry/primitives/sphere3d';
 
 interface Vec4 extends Array<number> { [d: number]: number, '@type': 'vec4', length: 4 }
+
+function Vec4() {
+    return Vec4.zero();
+}
 
 namespace Vec4 {
     export function zero(): Vec4 {
@@ -49,8 +54,20 @@ namespace Vec4 {
         return out;
     }
 
+    export function fromSphere(out: Vec4, sphere: Sphere3D) {
+        out[0] = sphere.center[0];
+        out[1] = sphere.center[1];
+        out[2] = sphere.center[2];
+        out[3] = sphere.radius;
+        return out;
+    }
+
+    export function ofSphere(sphere: Sphere3D) {
+        return fromSphere(zero(), sphere);
+    }
+
     export function hasNaN(a: Vec4) {
-        return isNaN(a[0]) || isNaN(a[1]) || isNaN(a[2]) || isNaN(a[3])
+        return isNaN(a[0]) || isNaN(a[1]) || isNaN(a[2]) || isNaN(a[3]);
     }
 
     export function toArray(a: Vec4, out: NumberArray, offset: number) {
@@ -58,14 +75,15 @@ namespace Vec4 {
         out[offset + 1] = a[1];
         out[offset + 2] = a[2];
         out[offset + 3] = a[3];
+        return out;
     }
 
     export function fromArray(a: Vec4, array: NumberArray, offset: number) {
-        a[0] = array[offset + 0]
-        a[1] = array[offset + 1]
-        a[2] = array[offset + 2]
-        a[3] = array[offset + 3]
-        return a
+        a[0] = array[offset + 0];
+        a[1] = array[offset + 1];
+        a[2] = array[offset + 2];
+        a[3] = array[offset + 3];
+        return a;
     }
 
     export function toVec3Array(a: Vec4, out: NumberArray, offset: number) {
@@ -75,11 +93,11 @@ namespace Vec4 {
     }
 
     export function fromVec3Array(a: Vec4, array: NumberArray, offset: number) {
-        a[0] = array[offset + 0]
-        a[1] = array[offset + 1]
-        a[2] = array[offset + 2]
-        a[3] = 0
-        return a
+        a[0] = array[offset + 0];
+        a[1] = array[offset + 1];
+        a[2] = array[offset + 2];
+        a[3] = 0;
+        return a;
     }
 
     export function copy(out: Vec4, a: Vec4) {
@@ -216,11 +234,15 @@ namespace Vec4 {
     export function equals(a: Vec4, b: Vec4) {
         const a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
         const b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
-        return (Math.abs(a0 - b0) <= EPSILON.Value * Math.max(1.0, Math.abs(a0), Math.abs(b0)) &&
-                Math.abs(a1 - b1) <= EPSILON.Value * Math.max(1.0, Math.abs(a1), Math.abs(b1)) &&
-                Math.abs(a2 - b2) <= EPSILON.Value * Math.max(1.0, Math.abs(a2), Math.abs(b2)) &&
-                Math.abs(a3 - b3) <= EPSILON.Value * Math.max(1.0, Math.abs(a3), Math.abs(b3)));
+        return (Math.abs(a0 - b0) <= EPSILON * Math.max(1.0, Math.abs(a0), Math.abs(b0)) &&
+                Math.abs(a1 - b1) <= EPSILON * Math.max(1.0, Math.abs(a1), Math.abs(b1)) &&
+                Math.abs(a2 - b2) <= EPSILON * Math.max(1.0, Math.abs(a2), Math.abs(b2)) &&
+                Math.abs(a3 - b3) <= EPSILON * Math.max(1.0, Math.abs(a3), Math.abs(b3)));
+    }
+
+    export function toString(a: Vec4, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)} ${a[2].toPrecision(precision)}  ${a[3].toPrecision(precision)}]`;
     }
 }
 
-export default Vec4
+export default Vec4;

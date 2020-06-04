@@ -6,9 +6,9 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { chunkedSubtask, RuntimeContext } from 'mol-task'
+import { chunkedSubtask, RuntimeContext } from '../../../../mol-task';
 
-export { Tokenizer }
+export { Tokenizer };
 
 interface Tokenizer {
     data: string,
@@ -45,10 +45,10 @@ namespace Tokenizer {
 
     /** Resets the state */
     export function reset (state: Tokenizer) {
-        state.position = 0
-        state.lineNumber = 1
-        state.tokenStart = 0
-        state.tokenEnd = 0
+        state.position = 0;
+        state.lineNumber = 1;
+        state.tokenStart = 0;
+        state.tokenEnd = 0;
     }
 
     /**
@@ -91,7 +91,7 @@ namespace Tokenizer {
         return eatLine(state);
     }
 
-    /** Advance the state by the given number of lines and return line starts/ends as tokens. */
+    /** Advance the state by the given number of lines and return line as string. */
     export function readLine(state: Tokenizer): string {
         markLine(state);
         return getTokenString(state);
@@ -107,11 +107,20 @@ namespace Tokenizer {
         return read;
     }
 
-    /** Advance the state by the given number of lines and return line starts/ends as tokens. */
-    export function readLines(state: Tokenizer, count: number): Tokens {
+    /** Advance the state by the given number of lines and return them*/
+    export function markLines(state: Tokenizer, count: number): Tokens {
         const lineTokens = TokenBuilder.create(state.data, count * 2);
         readLinesChunk(state, count, lineTokens);
         return lineTokens;
+    }
+
+    /** Advance the state by the given number of lines and return them */
+    export function readLines(state: Tokenizer, count: number): string[] {
+        const ret: string[] = [];
+        for (let i = 0; i < count; i++) {
+            ret.push(Tokenizer.readLine(state));
+        }
+        return ret;
     }
 
     /** Advance the state by the given number of lines and return line starts/ends as tokens. */
@@ -132,7 +141,7 @@ namespace Tokenizer {
 
     export function readAllLines(data: string) {
         const state = Tokenizer(data);
-        const tokens = TokenBuilder.create(state.data, Math.max(data.length / 80, 2))
+        const tokens = TokenBuilder.create(state.data, Math.max(data.length / 80, 2));
         while (markLine(state)) {
             TokenBuilder.add(tokens, state.tokenStart, state.tokenEnd);
         }
@@ -186,7 +195,7 @@ namespace Tokenizer {
      * Handles incrementing line count.
      */
     export function skipWhitespace(state: Tokenizer): number {
-        let prev = 10;
+        let prev = -1;
         while (state.position < state.length) {
             let c = state.data.charCodeAt(state.position);
             switch (c) {
@@ -277,13 +286,13 @@ export namespace TokenBuilder {
     }
 
     export function create(data: string, size: number): Tokens {
-        size = Math.max(10, size)
+        size = Math.max(10, size);
         return <Builder>{
             data,
             indicesLenMinus2: (size - 2) | 0,
             count: 0,
             offset: 0,
             indices: new Uint32Array(size)
-        }
+        };
     }
 }

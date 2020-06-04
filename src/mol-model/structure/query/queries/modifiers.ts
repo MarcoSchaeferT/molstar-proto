@@ -4,7 +4,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Segmentation } from 'mol-data/int';
+import { Segmentation, SortedArray } from '../../../../mol-data/int';
 import { Structure, Unit } from '../../structure';
 import { StructureQuery } from '../query';
 import { StructureSelection } from '../selection';
@@ -12,7 +12,7 @@ import { UniqueStructuresBuilder } from '../utils/builders';
 import { StructureUniqueSubsetBuilder } from '../../structure/util/unique-subset-builder';
 import { QueryContext, QueryFn } from '../context';
 import { structureIntersect, structureSubtract } from '../utils/structure-set';
-import { UniqueArray } from 'mol-data/generic';
+import { UniqueArray } from '../../../../mol-data/generic';
 import { StructureSubsetBuilder } from '../../structure/util/subset-builder';
 import StructureElement from '../../structure/element';
 
@@ -44,7 +44,7 @@ function getWholeResidues(ctx: QueryContext, source: Structure, structure: Struc
 }
 
 export function wholeResidues(query: StructureQuery): StructureQuery {
-    return ctx => {
+    return function query_wholeResidues(ctx) {
         const inner = query(ctx);
         if (StructureSelection.isSingleton(inner)) {
             return StructureSelection.Singletons(ctx.inputStructure, getWholeResidues(ctx, ctx.inputStructure, inner.structure));
@@ -94,6 +94,7 @@ function getIncludeSurroundingsWithRadius(ctx: QueryContext, source: Structure, 
     const { elementRadius, elementRadiusClosure, sourceMaxRadius, radius } = params;
 
     ctx.pushCurrentElement();
+    ctx.element.structure = structure;
     for (const unit of structure.units) {
         ctx.element.unit = unit;
         const { x, y, z } = unit.conformation;
@@ -115,14 +116,16 @@ function getIncludeSurroundingsWithRadius(ctx: QueryContext, source: Structure, 
 
 function createElementRadiusFn(ctx: QueryContext, eRadius: QueryFn<number>): StructureElement.Property<number> {
     return e => {
+        ctx.element.structure = e.structure;
         ctx.element.unit = e.unit;
         ctx.element.element = e.element;
         return eRadius(ctx);
-    }
+    };
 }
 
 function findStructureRadius(ctx: QueryContext, eRadius: QueryFn<number>) {
     let r = 0;
+    ctx.element.structure = ctx.inputStructure;
     for (const unit of ctx.inputStructure.units) {
         ctx.element.unit = unit;
         const elements = unit.elements;
@@ -140,7 +143,7 @@ function findStructureRadius(ctx: QueryContext, eRadius: QueryFn<number>) {
 }
 
 export function includeSurroundings(query: StructureQuery, params: IncludeSurroundingsParams): StructureQuery {
-    return ctx => {
+    return function query_includeSurroundings(ctx) {
         const inner = query(ctx);
 
         if (params.elementRadius) {
@@ -179,7 +182,7 @@ export function includeSurroundings(query: StructureQuery, params: IncludeSurrou
 }
 
 export function querySelection(selection: StructureQuery, query: StructureQuery): StructureQuery {
-    return ctx => {
+    return function query_querySelection(ctx) {
         const targetSel = selection(ctx);
         if (StructureSelection.structureCount(targetSel) === 0) return targetSel;
 
@@ -193,11 +196,11 @@ export function querySelection(selection: StructureQuery, query: StructureQuery)
             if (sI % 10 === 0) ctx.throwIfTimedOut();
         });
         return ret.getSelection();
-    }
+    };
 }
 
 export function intersectBy(query: StructureQuery, by: StructureQuery): StructureQuery {
-    return ctx => {
+    return function query_intersectBy(ctx) {
         const selection = query(ctx);
         if (StructureSelection.structureCount(selection) === 0) return selection;
 
@@ -217,12 +220,12 @@ export function intersectBy(query: StructureQuery, by: StructureQuery): Structur
 }
 
 export function exceptBy(query: StructureQuery, by: StructureQuery): StructureQuery {
-    return ctx => {
+    return function query_exceptBy(ctx) {
         const selection = query(ctx);
         if (StructureSelection.structureCount(selection) === 0) return selection;
 
         const bySel = by(ctx);
-        if (StructureSelection.structureCount(bySel) === 0) return StructureSelection.Empty(ctx.inputStructure);
+        if (StructureSelection.structureCount(bySel) === 0) return selection;
         const subtractBy = StructureSelection.unionStructure(bySel);
 
         const ret = StructureSelection.UniqueBuilder(ctx.inputStructure);
@@ -237,7 +240,7 @@ export function exceptBy(query: StructureQuery, by: StructureQuery): StructureQu
 }
 
 export function union(query: StructureQuery): StructureQuery {
-    return ctx => {
+    return function query_union(ctx) {
         const ret = StructureSelection.LinearBuilder(ctx.inputStructure);
         ret.add(StructureSelection.unionStructure(query(ctx)));
         return ret.getSelection();
@@ -245,13 +248,14 @@ export function union(query: StructureQuery): StructureQuery {
 }
 
 export function expandProperty(query: StructureQuery, property: QueryFn): StructureQuery {
-    return ctx => {
+    return function query_expandProperty(ctx) {
         const src = query(ctx);
         const propertyToStructureIndexMap = new Map<any, UniqueArray<number>>();
 
         const builders: StructureSubsetBuilder[] = [];
         ctx.pushCurrentElement();
         StructureSelection.forEach(src, (s, sI) => {
+            ctx.element.structure = s;
             for (const unit of s.units) {
                 ctx.element.unit = unit;
                 const elements = unit.elements;
@@ -272,6 +276,7 @@ export function expandProperty(query: StructureQuery, property: QueryFn): Struct
             if (sI % 10 === 0) ctx.throwIfTimedOut();
         });
 
+        ctx.element.structure = ctx.inputStructure;
         for (const unit of ctx.inputStructure.units) {
             ctx.element.unit = unit;
             const elements = unit.elements;
@@ -304,78 +309,118 @@ export interface IncludeConnectedParams {
 }
 
 export function includeConnected({ query, layerCount, wholeResidues, bondTest }: IncludeConnectedParams): StructureQuery {
-    return ctx => {
-        return 0 as any;
-    }
+    const lc = Math.max(layerCount, 0);
+    return function query_includeConnected(ctx) {
+        const builder = StructureSelection.UniqueBuilder(ctx.inputStructure);
+        const src = query(ctx);
+        ctx.pushCurrentBond();
+        ctx.atomicBond.setTestFn(bondTest);
+        StructureSelection.forEach(src, (s, sI) => {
+            let incl = s;
+            for (let i = 0; i < lc; i++) {
+                incl = includeConnectedStep(ctx, wholeResidues, incl);
+            }
+            builder.add(incl);
+            if (sI % 10 === 0) ctx.throwIfTimedOut();
+        });
+        ctx.popCurrentBond();
+
+        return builder.getSelection();
+    };
 }
 
-// function defaultBondTest(ctx: QueryContext) {
-//     return true;
-// }
+function includeConnectedStep(ctx: QueryContext, wholeResidues: boolean, structure: Structure) {
+    const expanded = expandConnected(ctx, structure);
+    if (wholeResidues) return getWholeResidues(ctx, ctx.inputStructure, expanded);
+    return expanded;
+}
 
-// interface IncludeConnectedCtx {
-//     queryCtx: QueryContext,
-//     input: Structure,
-//     bondTest: QueryFn<boolean>,
-//     wholeResidues: boolean
-// }
+function expandConnected(ctx: QueryContext, structure: Structure) {
+    const inputStructure = ctx.inputStructure;
+    const interBonds = inputStructure.interUnitBonds;
+    const builder = new StructureUniqueSubsetBuilder(inputStructure);
 
-// type FrontierSet = UniqueArray<StructureElement.UnitIndex, StructureElement.UnitIndex>
-// type Frontier = { unitIds: UniqueArray<number>, elements: Map<number /* unit id */, FrontierSet> }
+    const atomicBond = ctx.atomicBond;
 
-// namespace Frontier {
-//     export function has({ elements }: Frontier, unitId: number, element: StructureElement.UnitIndex) {
-//         if (!elements.has(unitId)) return false;
-//         const xs = elements.get(unitId)!;
-//         return xs.keys.has(element);
-//     }
+    // Process intra unit bonds
+    for (const unit of structure.units) {
+        if (unit.kind !== Unit.Kind.Atomic) {
+            // add the whole unit
+            builder.beginUnit(unit.id);
+            for (let i = 0, _i = unit.elements.length; i < _i; i++) {
+                builder.addElement(unit.elements[i]);
+            }
+            builder.commitUnit();
+            continue;
+        }
 
-//     export function create(pivot: Structure, input: Structure) {
-//         const unitIds = UniqueArray.create<number>();
-//         const elements: Frontier['elements'] = new Map();
-//         for (const unit of pivot.units) {
-//             if (!Unit.isAtomic(unit)) continue;
+        const inputUnitA = inputStructure.unitMap.get(unit.id) as Unit.Atomic;
+        const { offset: intraBondOffset, b: intraBondB, edgeProps: { flags, order } } = inputUnitA.bonds;
 
-//             UniqueArray.add(unitIds, unit.id, unit.id);
-//             const xs: FrontierSet = UniqueArray.create();
-//             elements.set(unit.id, xs);
+        atomicBond.setStructure(inputStructure);
 
-//             const pivotElements = unit.elements;
-//             const inputElements = input.unitMap.get(unit.id).elements;
-//             for (let i = 0, _i = pivotElements.length; i < _i; i++) {
-//                 const idx = SortedArray.indexOf(inputElements, pivotElements[i]) as StructureElement.UnitIndex;
-//                 UniqueArray.add(xs, idx, idx);
-//             }
-//         }
+        // Process intra unit bonds
+        atomicBond.a.unit = inputUnitA;
+        atomicBond.b.unit = inputUnitA;
+        for (let i = 0, _i = unit.elements.length; i < _i; i++) {
+            // add the current element
+            builder.addToUnit(unit.id, unit.elements[i]);
 
-//         return { unitIds, elements };
-//     }
+            const aIndex = SortedArray.indexOf(inputUnitA.elements, unit.elements[i]) as StructureElement.UnitIndex;
 
-//     export function addFrontier(target: Frontier, from: Frontier) {
-//         for (const unitId of from.unitIds.array) {
-//             let xs: FrontierSet;
-//             if (target.elements.has(unitId)) {
-//                 xs = target.elements.get(unitId)!;
-//             } else {
-//                 xs = UniqueArray.create();
-//                 target.elements.set(unitId, xs);
-//                 UniqueArray.add(target.unitIds, unitId, unitId);
-//             }
+            // check intra unit bonds
+            for (let lI = intraBondOffset[aIndex], _lI = intraBondOffset[aIndex + 1]; lI < _lI; lI++) {
+                const bIndex = intraBondB[lI] as StructureElement.UnitIndex;
+                const bElement = inputUnitA.elements[bIndex];
 
-//             for (const e of from.elements.get(unitId)!.array) {
-//                 UniqueArray.add(xs, e, e);
-//             }
-//         }
-//         return target;
-//     }
+                // Check if the element is already present:
+                if (SortedArray.has(unit.elements, bElement) || builder.has(unit.id, bElement)) continue;
 
-//     export function includeWholeResidues(structure: Structure, frontier: Frontier) {
-//         // ...
-//     }
-// }
+                atomicBond.aIndex = aIndex;
+                atomicBond.a.element = unit.elements[i];
+                atomicBond.bIndex = bIndex;
+                atomicBond.b.element = bElement;
+                atomicBond.type = flags[lI];
+                atomicBond.order = order[lI];
 
-// function expandFrontier(ctx: IncludeConnectedCtx, currentFrontier: Frontier, result: Frontier): Frontier {
-//     return 0 as any;
-// }
+                if (atomicBond.test(ctx, true)) {
+                    builder.addToUnit(unit.id, bElement);
+                }
+            }
+        }
+
+        // Process inter unit bonds
+        for (const bondedUnit of interBonds.getConnectedUnits(inputUnitA)) {
+            const currentUnitB = structure.unitMap.get(bondedUnit.unitB.id);
+
+            for (const aI of bondedUnit.connectedIndices) {
+                // check if the element is in the expanded structure
+                if (!SortedArray.has(unit.elements, inputUnitA.elements[aI])) continue;
+
+                for (const bond of bondedUnit.getEdges(aI)) {
+                    const bElement = bondedUnit.unitB.elements[bond.indexB];
+
+                    // Check if the element is already present:
+                    if ((currentUnitB && SortedArray.has(currentUnitB.elements, bElement)) || builder.has(bondedUnit.unitB.id, bElement)) continue;
+
+                    atomicBond.a.unit = inputUnitA;
+                    atomicBond.aIndex = aI;
+                    atomicBond.a.element = inputUnitA.elements[aI];
+                    atomicBond.b.unit = bondedUnit.unitB;
+                    atomicBond.bIndex = bond.indexB;
+                    atomicBond.b.element = bElement;
+                    atomicBond.type = bond.props.flag;
+                    atomicBond.order = bond.props.order;
+
+                    if (atomicBond.test(ctx, true)) {
+                        builder.addToUnit(bondedUnit.unitB.id, bElement);
+                    }
+                }
+            }
+        }
+    }
+
+    return builder.getStructure();
+}
 
 // TODO: unionBy (skip this one?), cluster

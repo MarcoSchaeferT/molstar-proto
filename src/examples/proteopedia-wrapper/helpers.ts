@@ -4,11 +4,11 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { ResidueIndex, Model } from 'mol-model/structure';
-import { BuiltInStructureRepresentationsName } from 'mol-repr/structure/registry';
-import { BuiltInColorThemeName } from 'mol-theme/color';
-import { AminoAcidNames } from 'mol-model/structure/model/types';
-import { PluginContext } from 'mol-plugin/context';
+import { ModelSymmetry } from '../../mol-model-formats/structure/property/symmetry';
+import { Model, ResidueIndex } from '../../mol-model/structure';
+import { PluginContext } from '../../mol-plugin/context';
+import { StructureRepresentationRegistry } from '../../mol-repr/structure/registry';
+import { ColorTheme } from '../../mol-theme/color';
 
 export interface ModelInfo {
     hetResidues: { name: string, indices: ResidueIndex[] }[],
@@ -18,9 +18,9 @@ export interface ModelInfo {
 
 export namespace ModelInfo {
     async function getPreferredAssembly(ctx: PluginContext, model: Model) {
-        if (model.label.length <= 3) return void 0;
+        if (model.entryId.length <= 3) return void 0;
         try {
-            const id = model.label.toLowerCase();
+            const id = model.entryId.toLowerCase();
             const src = await ctx.runTask(ctx.fetch({ url: `https://www.ebi.ac.uk/pdbe/api/pdb/entry/summary/${id}` })) as string;
             const json = JSON.parse(src);
             const data = json && json[id];
@@ -53,14 +53,12 @@ export namespace ModelInfo {
         const hetMap = new Map<string, ModelInfo['hetResidues'][0]>();
 
         for (let rI = 0 as ResidueIndex; rI < residueCount; rI++) {
-            const comp_id = model.atomicHierarchy.residues.label_comp_id.value(rI);
-            if (AminoAcidNames.has(comp_id)) continue;
-            const mod_parent = model.properties.modifiedResidues.parentId.get(comp_id);
-            if (mod_parent && AminoAcidNames.has(mod_parent)) continue;
-
             const cI = chainIndex[residueOffsets[rI]];
             const eI = model.atomicHierarchy.index.getEntityFromChain(cI);
-            if (model.entities.data.type.value(eI) === 'water') continue;
+            const entityType = model.entities.data.type.value(eI);
+            if (entityType !== 'non-polymer' && entityType !== 'branched') continue;
+
+            const comp_id = model.atomicHierarchy.atoms.label_comp_id.value(residueOffsets[rI]);
 
             let lig = hetMap.get(comp_id);
             if (!lig) {
@@ -72,10 +70,11 @@ export namespace ModelInfo {
         }
 
         const preferredAssemblyId = await pref;
+        const symmetry = ModelSymmetry.Provider.get(model);
 
         return {
             hetResidues: hetResidues,
-            assemblies: model.symmetry.assemblies.map(a => ({ id: a.id, details: a.details, isPreferred: a.id === preferredAssemblyId })),
+            assemblies: symmetry ? symmetry.assemblies.map(a => ({ id: a.id, details: a.details, isPreferred: a.id === preferredAssemblyId })) : [],
             preferredAssemblyId
         };
     }
@@ -85,6 +84,7 @@ export type SupportedFormats = 'cif' | 'pdb'
 export interface LoadParams {
     url: string,
     format?: SupportedFormats,
+    isBinary?: boolean,
     assemblyId?: string,
     representationStyle?: RepresentationStyle
 }
@@ -92,9 +92,29 @@ export interface LoadParams {
 export interface RepresentationStyle {
     sequence?: RepresentationStyle.Entry,
     hetGroups?: RepresentationStyle.Entry,
+    snfg3d?: { hide?: boolean },
     water?: RepresentationStyle.Entry
 }
 
 export namespace RepresentationStyle {
-    export type Entry = { kind?: BuiltInStructureRepresentationsName, coloring?: BuiltInColorThemeName }
+    export type Entry = { hide?: boolean, kind?: StructureRepresentationRegistry.BuiltIn, coloring?: ColorTheme.BuiltIn }
+}
+
+export enum StateElements {
+    Model = 'model',
+    ModelProps = 'model-props',
+    Assembly = 'assembly',
+
+    VolumeStreaming = 'volume-streaming',
+
+    Sequence = 'sequence',
+    SequenceVisual = 'sequence-visual',
+    Het = 'het',
+    HetVisual = 'het-visual',
+    Het3DSNFG = 'het-3dsnfg',
+    Water = 'water',
+    WaterVisual = 'water-visual',
+
+    HetGroupFocus = 'het-group-focus',
+    HetGroupFocusGroup = 'het-group-focus-group'
 }

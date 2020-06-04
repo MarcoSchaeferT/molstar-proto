@@ -1,20 +1,20 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import S from '../sorted-array'
-import I from '../interval'
+import S from '../sorted-array';
+import I from '../interval';
 
 type OrderedSetImpl = I | S
 type Nums = ArrayLike<number>
 
 export const Empty: OrderedSetImpl = I.Empty;
 
-export const ofSingleton = I.ofSingleton
-export const ofRange = I.ofRange
-export const ofBounds = I.ofBounds
+export const ofSingleton = I.ofSingleton;
+export const ofRange = I.ofRange;
+export const ofBounds = I.ofBounds;
 
 export function ofSortedArray(xs: Nums): OrderedSetImpl {
     if (!xs.length) return Empty;
@@ -35,6 +35,8 @@ export function end(set: OrderedSetImpl) { return I.is(set) ? I.end(set) : S.end
 
 export function hashCode(set: OrderedSetImpl) { return I.is(set) ? I.hashCode(set) : S.hashCode(set); }
 // TODO: possibly add more hash functions to allow for multilevel hashing.
+
+export function toString(set: OrderedSetImpl) { return I.is(set) ? I.toString(set) : S.toString(set); }
 
 export function areEqual(a: OrderedSetImpl, b: OrderedSetImpl) {
     if (I.is(a)) {
@@ -124,7 +126,7 @@ function isSubsetIS(a: I, b: S) {
     const minA = I.min(a), maxA = I.max(a);
     if (maxA - minA + 1 === 0) return false;
     const minB = S.min(b), maxB = S.max(b);
-    return minB >= minA && maxA <= maxB;
+    return minB >= minA && maxB <= maxA;
 }
 
 function areRangesIntersecting(a: OrderedSetImpl, b: OrderedSetImpl) {
@@ -148,8 +150,11 @@ function unionII(a: I, b: I) {
     const minA = I.min(a), minB = I.min(b);
     if (areRangesIntersecting(a, b)) return I.ofRange(Math.min(minA, minB), Math.max(I.max(a), I.max(b)));
     let lSize, lMin, rSize, rMin;
-    if (minA < minB) { lSize = sizeA; lMin = minA; rSize = sizeB; rMin = minB; }
-    else { lSize = sizeB; lMin = minB; rSize = sizeA; rMin = minA; }
+    if (minA < minB) {
+        lSize = sizeA; lMin = minA; rSize = sizeB; rMin = minB;
+    } else {
+        lSize = sizeB; lMin = minB; rSize = sizeA; rMin = minA;
+    }
     const arr = new Int32Array(sizeA + sizeB);
     for (let i = 0; i < lSize; i++) arr[i] = i + lMin;
     for (let i = 0; i < rSize; i++) arr[i + lSize] = i + rMin;
@@ -284,4 +289,77 @@ export function forEach(set: OrderedSetImpl, f: (value: number, i: number, ctx: 
         }
     }
     return ctx;
+}
+
+export function forEachSegment(set: OrderedSetImpl, segment: (v: number) => number, f: (value: number, segIndex: number, ctx: any) => void, ctx: any) {
+    if (I.is(set)) {
+        let sI = 0;
+        for (let i = I.min(set), _i = I.max(set); i <= _i; i++) {
+            const s = segment(i);
+            let endI = i + 1;
+            while (endI < _i && segment(endI) === s) endI++;
+            i = endI - 1;
+            f(s, sI, ctx);
+            sI++;
+        }
+    } else {
+        let sI = 0;
+        for (let i = 0, _i = set.length; i < _i; i++) {
+            const s = segment(set[i]);
+            let endI = i + 1;
+            while (endI < _i && segment(set[endI]) === s) endI++;
+            i = endI - 1;
+            f(s, sI, ctx);
+            sI++;
+        }
+    }
+    return ctx;
+}
+
+export function indexedIntersect(idxA: OrderedSetImpl, a: S, b: S): OrderedSetImpl {
+    if (a === b) return idxA;
+    const lenI = size(idxA), lenA = a.length, lenB = b.length;
+    if (lenI === 0 || lenA === 0 || lenB === 0) return Empty;
+
+    const startJ = S.findPredecessorIndex(b, a[min(idxA)]);
+    const endJ = S.findPredecessorIndex(b, a[max(idxA)] + 1);
+
+    let commonCount = 0;
+
+    let offset = 0;
+    let O = 0;
+    let j = startJ;
+    while (O < lenI && j < endJ) {
+        const x = a[getAt(idxA, O)], y = b[j];
+        if (x < y) {
+            O++;
+        } else if (x > y) {
+            j++;
+        } else {
+            commonCount++; O++; j++;
+        }
+    }
+
+    // no common elements
+    if (commonCount === 0) return Empty;
+    // A === B
+    if (commonCount === lenA && commonCount === lenB) return idxA;
+
+    const indices = new Int32Array(commonCount);
+
+    offset = 0;
+    O = 0;
+    j = startJ;
+    while (O < lenI && j < endJ) {
+        const x = a[getAt(idxA, O)], y = b[j];
+        if (x < y) {
+            O++;
+        } else if (x > y) {
+            j++;
+        } else {
+            indices[offset++] = j; O++; j++;
+        }
+    }
+
+    return ofSortedArray(indices);
 }

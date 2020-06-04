@@ -4,14 +4,14 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Column, ColumnHelpers } from 'mol-data/db'
-import { Tokens } from '../tokenizer'
-import { parseInt as fastParseInt, parseFloat as fastParseFloat } from '../number-parser'
+import { Column, ColumnHelpers } from '../../../../../mol-data/db';
+import { Tokens } from '../tokenizer';
+import { parseInt as fastParseInt, parseFloat as fastParseFloat } from '../number-parser';
 
 export default function TokenColumnProvider(tokens: Tokens) {
     return function<T extends Column.Schema>(type: T) {
         return TokenColumn(tokens, type);
-    }
+    };
 }
 
 export function TokenColumn<T extends Column.Schema>(tokens: Tokens, schema: T): Column<T['T']> {
@@ -19,11 +19,11 @@ export function TokenColumn<T extends Column.Schema>(tokens: Tokens, schema: T):
     const { valueType: type } = schema;
 
     const value: Column<T['T']>['value'] =
-          type === 'str'
-        ? row => data.substring(indices[2 * row], indices[2 * row + 1])
-        : type === 'int'
-        ? row => fastParseInt(data, indices[2 * row], indices[2 * row + 1]) || 0
-        : row => fastParseFloat(data, indices[2 * row], indices[2 * row + 1]) || 0;
+        type === 'str'
+            ? row => data.substring(indices[2 * row], indices[2 * row + 1])
+            : type === 'int'
+                ? row => fastParseInt(data, indices[2 * row], indices[2 * row + 1]) || 0
+                : row => fastParseFloat(data, indices[2 * row], indices[2 * row + 1]) || 0;
 
     return {
         schema: schema,
@@ -49,5 +49,5 @@ export function areValuesEqualProvider(tokens: Tokens) {
             }
         }
         return true;
-    }
+    };
 }

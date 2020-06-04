@@ -6,18 +6,18 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Column } from 'mol-data/db'
-import encodeMsgPack from '../../../common/msgpack/encode'
+import { Column } from '../../../../mol-data/db';
+import encodeMsgPack from '../../../common/msgpack/encode';
 import {
     EncodedColumn, EncodedData, EncodedFile, EncodedDataBlock, EncodedCategory, ArrayEncoder, ArrayEncoding as E, VERSION
-} from '../../../common/binary-cif'
-import { Field, Category, Encoder } from '../encoder'
-import Writer from '../../writer'
+} from '../../../common/binary-cif';
+import { Field, Category, Encoder } from '../encoder';
+import Writer from '../../writer';
 import { getIncludedFields, getCategoryInstanceData, CategoryInstanceData } from './util';
 import { classifyIntArray, classifyFloatArray } from '../../../common/binary-cif/classifier';
-import { ArrayCtor } from 'mol-util/type-helpers';
+import { ArrayCtor } from '../../../../mol-util/type-helpers';
 
-export interface EncodingProvider {
+export interface BinaryEncodingProvider {
     get(category: string, field: string): ArrayEncoder | undefined;
 }
 
@@ -28,8 +28,16 @@ export default class BinaryEncoder implements Encoder<Uint8Array> {
     private filter: Category.Filter = Category.DefaultFilter;
     private formatter: Category.Formatter = Category.DefaultFormatter;
 
+    readonly isBinary = true;
+
+    binaryEncodingProvider: BinaryEncodingProvider | undefined = void 0;
+
     setFilter(filter?: Category.Filter) {
         this.filter = filter || Category.DefaultFilter;
+    }
+
+    isCategoryIncluded(name: string) {
+        return this.filter.includeCategory(name);
     }
 
     setFormatter(formatter?: Category.Formatter) {
@@ -43,7 +51,7 @@ export default class BinaryEncoder implements Encoder<Uint8Array> {
         });
     }
 
-    writeCategory<Ctx>(category: Category<Ctx>, context?: Ctx) {
+    writeCategory<Ctx>(category: Category<Ctx>, context?: Ctx, options?: Encoder.WriteCategoryOptions) {
         if (!this.data) {
             throw new Error('The writer contents have already been encoded, no more writing.');
         }
@@ -52,7 +60,7 @@ export default class BinaryEncoder implements Encoder<Uint8Array> {
             throw new Error('No data block created.');
         }
 
-        if (!this.filter.includeCategory(category.name)) return;
+        if (!options?.ignoreFilter && !this.filter.includeCategory(category.name)) return;
 
         const { instance, rowCount, source } = getCategoryInstanceData(category, context);
         if (!rowCount) return;
@@ -64,7 +72,7 @@ export default class BinaryEncoder implements Encoder<Uint8Array> {
             if (!this.filter.includeField(category.name, f.name)) continue;
 
             const format = this.formatter.getFormat(category.name, f.name);
-            cat.columns.push(encodeField(category.name, f, source, rowCount, format, this.encodingProvider, this.autoClassify));
+            cat.columns.push(encodeField(category.name, f, source, rowCount, format, this.binaryEncodingProvider, this.autoClassify));
         }
         // no columns included.
         if (!cat.columns.length) return;
@@ -88,7 +96,12 @@ export default class BinaryEncoder implements Encoder<Uint8Array> {
         return this.encodedData;
     }
 
-    constructor(encoder: string, private encodingProvider: EncodingProvider | undefined, private autoClassify: boolean) {
+    getSize() {
+        return this.encodedData.length;
+    }
+
+    constructor(encoder: string, encodingProvider: BinaryEncodingProvider | undefined, private autoClassify: boolean) {
+        this.binaryEncodingProvider = encodingProvider;
         this.data = {
             encoder,
             version: VERSION,
@@ -110,7 +123,7 @@ function getDefaultEncoder(type: Field.Type): ArrayEncoder {
     return ArrayEncoder.by(E.byteArray);
 }
 
-function tryGetEncoder(categoryName: string, field: Field, format: Field.Format | undefined, provider: EncodingProvider | undefined) {
+function tryGetEncoder(categoryName: string, field: Field, format: Field.Format | undefined, provider: BinaryEncodingProvider | undefined) {
     if (format && format.encoder) {
         return format.encoder;
     } else if (field.defaultFormat && field.defaultFormat.encoder) {
@@ -129,7 +142,7 @@ function classify(type: Field.Type, data: ArrayLike<any>) {
 }
 
 function encodeField(categoryName: string, field: Field, data: CategoryInstanceData['source'], totalCount: number,
-    format: Field.Format | undefined, encoderProvider: EncodingProvider | undefined, autoClassify: boolean): EncodedColumn {
+    format: Field.Format | undefined, encoderProvider: BinaryEncodingProvider | undefined, autoClassify: boolean): EncodedColumn {
 
     const { array, allPresent, mask } = getFieldData(field, getArrayCtor(field, format), totalCount, data);
 
@@ -177,8 +190,7 @@ function getFieldData(field: Field<any, any>, arrayCtor: ArrayCtor<string | numb
                 if (isStr)
                     array[offset] = '';
                 allPresent = false;
-            }
-            else {
+            } else {
                 mask[offset] = Column.ValueKind.Present;
                 array[offset] = getter(key, d, offset);
             }

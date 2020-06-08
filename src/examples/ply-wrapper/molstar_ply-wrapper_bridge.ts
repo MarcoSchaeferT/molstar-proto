@@ -72,10 +72,10 @@ class MolStarPLYWrapper {
     changeMark(old_ami: number){
         const model = this.getObj<PluginStateObject.Molecule.Model>('model');
         let test_aminoacid = 0;
-
+        console.log("old_ami",old_ami);
         if(ex.mesh_object_e !== 0) {
             for (let i = 1; i <= ex.number_of_atoms; i++) {
-                test_aminoacid = model.atomicHierarchy.residues.auth_seq_id.value(model.atomicHierarchy.residueAtomSegments.index[i])
+                test_aminoacid = model.atomicHierarchy.residues.auth_seq_id.value(model.atomicHierarchy.residueAtomSegments.index[i]);
                 if (test_aminoacid === ex.aminoAcid) {
                     if (!this.plugin.canvas3d) {return;}
                     this.plugin.canvas3d.mark({
@@ -100,30 +100,38 @@ class MolStarPLYWrapper {
         if (!this.plugin.canvas3d) {return};
         this.plugin.canvas3d.interaction.click.subscribe(e => {
             const loci = e.current.loci;
-            console.log("loci:",loci)
+            console.log("e:",e);
+            console.log("e.currnet", e.current.repr?.getLoci());
+            console.log("loci-test:",loci);
             ex.mesh_object_e = e;
-            if (!ShapeGroup.isLoci(loci)) return // ignore non-shape loci
+            if (!ShapeGroup.isLoci(loci)) return; // ignore non-shape loci
             const atomID = OrderedSet.toArray(loci.groups[0].ids)[0]; // takes the first id of the first group
-
+            console.log("atomID:",atomID);
             // use the model to related the atomID because the atomID is best viewed as a model property and
             // not as a structure property (a structure can be build from multiple models)
             const model = this.getObj<PluginStateObject.Molecule.Model>('model');
 
-            if (!model) return // handle missing model case
+            if (!model) return; // handle missing model case
 
             // assume the atomID is an index starting from 1
-            const atomIndex = atomID - 1
+            const atomIndex = atomID - 1;
 
             // get indices
-            const residueIndex = model.atomicHierarchy.residueAtomSegments.index[atomIndex]
-            const chainIndex = model.atomicHierarchy.chainAtomSegments.index[residueIndex]
-
+            const residueIndex = model.atomicHierarchy.residueAtomSegments.index[atomIndex];
+            const chainIndex = model.atomicHierarchy.chainAtomSegments.index[residueIndex];
+            console.log("model: ",model);
             // get infos
-            const residueNumber = model.atomicHierarchy.residues.auth_seq_id.value(residueIndex)
-            const residueName = model.atomicHierarchy.atoms.auth_comp_id.value(residueIndex)
-            const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex)
+            const residueNumber = model.atomicHierarchy.residues.auth_seq_id.value(residueIndex);
+            const residueName = model.atomicHierarchy.atoms.auth_comp_id.value(residueIndex);
+            const chainName = model.atomicHierarchy.chains.auth_asym_id.value(chainIndex);
+
+            //console.log("residueIndex",residueIndex);
+            //console.log("chainIndex",chainIndex);
+            //console.log("residueNumber",residueNumber);
+            //console.log("residueName",residueName);
+            //console.log("chainName",chainName);
             ex.aminoAcid = residueNumber;
-            this.events.residueInfo.next({residueNumber, residueName, chainName})
+            this.events.residueInfo.next({residueNumber, residueName, chainName});
 
         });
         return 0;
@@ -134,7 +142,8 @@ class MolStarPLYWrapper {
     }
 
     private download(b: StateBuilder.To<PSO.Root>, url: string) {
-        return b.apply(StateTransforms.Data.Download, { url, isBinary: false })
+        console.log("download():  url:",url);
+        return b.apply(StateTransforms.Data.Download, { url, isBinary: false });
     }
 
     private model(b: StateBuilder.To<PSO.Data.Binary | PSO.Data.String>, format: SupportedFormats, assemblyId: string) {
@@ -268,7 +277,7 @@ class MolStarPLYWrapper {
     private loadedParams: LoadParams = { plyurl: '',  url: '', format: 'cif', assemblyId: '' };
     async load({ plyurl, url, format = 'cif', assemblyId = '', representationStyle }: LoadParams) {
         let loadType: 'full' | 'update' = 'full';
-
+        console.log("async load():  url:",url);
         const state = this.plugin.state.data;
 
         if (this.loadedParams.plyurl !== plyurl || this.loadedParams.url !== url || this.loadedParams.format !== format) {

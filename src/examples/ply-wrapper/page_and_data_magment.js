@@ -14,10 +14,11 @@ ex.aminoAcid = 91;
 ex.number_of_atoms = 0;
 ex.mesh_object_e = 0;
 var assemblyId = 'preferred';
-var url;
+var plyurl = '/test-data/run_0_mesh.ply';
+var url = '/test-data/run_0.pdb';
 var format = 'pdb';
 var plyName = 'run_0_mesh';
-var plyurl = '/test-data/' + plyName + '.ply';
+//var plyurl = '/test-data/' + plyName + '.ply';
 var colorMode = 'element';
 
 PluginWrapper.init('app' /** or document.getElementById('app') */);

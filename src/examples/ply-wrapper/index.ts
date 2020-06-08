@@ -3,9 +3,9 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  */
-
+import './ply-wrapper.scss';
 import { createPlugin, DefaultPluginSpec } from '../../mol-plugin';
-import './index.html'
+import './index.html';
 import { PluginContext } from '../../mol-plugin/context';
 import { PluginCommands } from '../../mol-plugin/commands';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
@@ -23,7 +23,7 @@ import { PluginState } from '../../mol-plugin/state';
 import { OrderedSet } from '../../mol-data/int';
 import {ShapeGroup} from '../../mol-model/shape';
 import {MarkerAction} from '../../mol-util/marker-action';
-import {StateElements} from "../proteopedia-wrapper/helpers";
+import {StateElements} from '../proteopedia-wrapper/helpers';
 //import {volumeStreamingControls} from "../proteopedia-wrapper/ui/controls";
 let ex = require('../../examples/ply-wrapper/data_exchange')
 

@@ -23,7 +23,7 @@ import { PluginState } from '../../mol-plugin/state';
 import { OrderedSet } from '../../mol-data/int';
 import {ShapeGroup} from '../../mol-model/shape';
 import {MarkerAction} from '../../mol-util/marker-action';
-import {StateElements} from '../proteopedia-wrapper/helpers';
+import {StateElements} from './helpers';
 //import {volumeStreamingControls} from "../proteopedia-wrapper/ui/controls";
 let ex = require('./data_exchange');
 

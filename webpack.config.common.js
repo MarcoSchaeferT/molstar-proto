@@ -48,6 +48,7 @@ const sharedConfig = {
             'node_modules',
             path.resolve(__dirname, 'lib/')
         ],
+        extensions: ['.js', '.tsx', '.ts']
     },
     watchOptions: {
         aggregateTimeout: 750

@@ -17,7 +17,8 @@
         "jsx": "react",
         "lib": [ "es6", "dom", "esnext.asynciterable", "es2016" ],
         "rootDir": "src",
-        "outDir": "lib/commonjs"
+        "outDir": "lib/commonjs",
+        "allowJs": true
     },
     "include": [ "src/**/*" ]
 }

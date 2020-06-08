@@ -17,7 +17,8 @@
         "jsx": "react",
         "lib": [ "es6", "dom", "esnext.asynciterable", "es2016" ],
         "rootDir": "src",
-        "outDir": "lib"
+        "outDir": "lib",
+        "allowJs": true
     },
     "include": [ "src/**/*" ],
     "exclude": [ "src/servers/**/*", "src/perf-tests/*", "src/cli/**/*" ]
